@@ -89,11 +89,27 @@ export const CATEGORY_DISPLAY: Record<string, string> = {
   sports:        'Sports Event Organizers',
 };
 
-/** Build canonical SEO URL: /photographers-in-noida */
-export function buildSeoUrl(categorySlug: string, citySlug: string): string {
-  if (!categorySlug) return `/events-in-${citySlug}`;
-  const seoService = CATEGORY_TO_SEO[categorySlug] ?? categorySlug;
+/** Build canonical SEO URL: /photographers-in-noida
+ *  @param categorySlugOrSeoPlural  pass category.seoPlural when available, otherwise category.slug
+ */
+export function buildSeoUrl(categorySlugOrSeoPlural: string, citySlug: string): string {
+  if (!categorySlugOrSeoPlural) return `/events-in-${citySlug}`;
+  // If caller passes the DB seoPlural directly it won't be in CATEGORY_TO_SEO → use as-is
+  const seoService = CATEGORY_TO_SEO[categorySlugOrSeoPlural] ?? categorySlugOrSeoPlural;
   return `/${seoService}-in-${citySlug}`;
+}
+
+/**
+ * Build SEO URL from a full Category object (preferred — uses seoPlural field set by admin).
+ * Falls back to CATEGORY_TO_SEO map then to slug for backwards-compat.
+ */
+export function buildSeoUrlFromCategory(
+  cat: { slug: string; seoPlural?: string },
+  citySlug: string,
+): string {
+  if (!citySlug) return `/search?q=${encodeURIComponent(cat.slug)}&nlp=1`;
+  const plural = cat.seoPlural || CATEGORY_TO_SEO[cat.slug] || cat.slug;
+  return `/${plural}-in-${citySlug}`;
 }
 
 /** Build city events URL: /events-in-noida */
@@ -139,18 +155,23 @@ export function citySlugToName(slug: string): string {
 }
 
 /**
- * All known SEO combinations for static generation (high-value pages)
- * Format: { seoSlug: "photographers-in-noida" }
+ * Static-generation hints for Next.js build (ISR fallback = true so new combos work at runtime).
+ * These slugs are PRE-RENDERED at build time for the fastest cold-start.
+ * At runtime, any /seoPlural-in-citySlug not in this list is SSR'd on first request.
+ *
+ * SOURCE OF TRUTH for cities/categories is the database; this list is only a performance hint.
+ * Update this list periodically as new cities/categories are added via admin.
  */
 export const STATIC_SEO_SLUGS = (() => {
+  // Build-time hint only — real pages are served from DB regardless of this list
   const cities = ['noida', 'delhi', 'gurgaon', 'faridabad', 'ghaziabad', 'greater-noida'];
-  const services = Object.keys(CATEGORY_TO_SEO);
+  const services = Object.values(CATEGORY_TO_SEO);  // use seoPlural values, not raw slugs
   const slugs: { seoSlug: string }[] = [];
 
   for (const city of cities) {
     slugs.push({ seoSlug: `events-in-${city}` });
-    for (const service of services) {
-      slugs.push({ seoSlug: `${CATEGORY_TO_SEO[service]}-in-${city}` });
+    for (const seoPlural of services) {
+      slugs.push({ seoSlug: `${seoPlural}-in-${city}` });
     }
   }
   return slugs;

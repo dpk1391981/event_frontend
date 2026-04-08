@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useAppStore } from '@/store/useAppStore';
 import { locationsApi } from '@/lib/api';
 import { City } from '@/types';
@@ -15,21 +15,22 @@ import {
 
 export default function Header() {
   const pathname = usePathname();
+  const router   = useRouter();
   const { user, selectedCity, setSelectedCity, logout } = useAppStore();
-  const [userMenuOpen, setUserMenuOpen] = useState(false);
-  const [mobileOpen, setMobileOpen] = useState(false);
-  const [cityOpen, setCityOpen] = useState(false);
-  const [cities, setCities] = useState<City[]>([]);
-  const [citySearch, setCitySearch] = useState('');
+  const [userMenuOpen, setUserMenuOpen]   = useState(false);
+  const [mobileOpen, setMobileOpen]       = useState(false);
+  const [cityOpen, setCityOpen]           = useState(false);
+  const [cities, setCities]               = useState<City[]>([]);
+  const [citySearch, setCitySearch]       = useState('');
+  const [geoLoading, setGeoLoading]       = useState(false);
   const cityRef = useRef<HTMLDivElement>(null);
 
+  // Load cities once (on mount) — not deferred behind cityOpen so mobile drawer has them too
   useEffect(() => {
-    if (cityOpen && !cities.length) {
-      locationsApi.getCities()
-        .then((d: unknown) => setCities(d as City[]))
-        .catch(() => {});
-    }
-  }, [cityOpen, cities.length]);
+    locationsApi.getCities()
+      .then((d: unknown) => setCities(d as City[]))
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     const h = (e: MouseEvent) => {
@@ -38,6 +39,42 @@ export default function Header() {
     document.addEventListener('mousedown', h);
     return () => document.removeEventListener('mousedown', h);
   }, []);
+
+  /** Auto-detect: get coords → find nearest city in our DB list */
+  const detectCity = useCallback(() => {
+    if (!navigator?.geolocation) return;
+    setGeoLoading(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const { latitude, longitude } = pos.coords;
+        // Find closest city by Euclidean distance on lat/lng
+        let closest: City | null = null;
+        let minDist = Infinity;
+        cities.forEach((c: any) => {
+          if (c.latitude && c.longitude) {
+            const d = Math.hypot(c.latitude - latitude, c.longitude - longitude);
+            if (d < minDist) { minDist = d; closest = c; }
+          }
+        });
+        if (closest) pickCity(closest);
+        setGeoLoading(false);
+      },
+      () => setGeoLoading(false),
+      { timeout: 8000 },
+    );
+  }, [cities]);
+
+  /** Select city, persist to store, optionally redirect */
+  const pickCity = useCallback((city: City | null) => {
+    setSelectedCity(city);
+    setCityOpen(false);
+    setCitySearch('');
+    setMobileOpen(false);
+    // On homepage or city pages — navigate to city-specific home page
+    if (city && (pathname === '/' || pathname?.startsWith('/plan-event-in-'))) {
+      router.push(`/plan-event-in-${city.slug}`);
+    }
+  }, [pathname, router, setSelectedCity]);
 
   // Lock body scroll when mobile menu is open
   useEffect(() => {
@@ -83,8 +120,20 @@ export default function Header() {
             </button>
 
             {cityOpen && (
-              <div className="absolute top-10 left-0 bg-white rounded-2xl shadow-2xl border border-gray-100 p-3 w-64 z-50">
-                <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 px-1">Select City</p>
+              <div className="absolute top-10 left-0 bg-white rounded-2xl shadow-2xl border border-gray-100 p-3 w-68 z-50" style={{ minWidth: '16rem' }}>
+                <div className="flex items-center justify-between mb-2 px-1">
+                  <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Select City</p>
+                  <button
+                    onClick={detectCity}
+                    disabled={geoLoading || !cities.length}
+                    className="flex items-center gap-1 text-xs text-red-600 font-semibold hover:text-red-700 disabled:opacity-40 transition"
+                  >
+                    {geoLoading
+                      ? <span className="w-3 h-3 border border-red-400 border-t-transparent rounded-full animate-spin" />
+                      : <LocationIcon className="w-3 h-3" />}
+                    Auto-detect
+                  </button>
+                </div>
                 <input
                   type="text"
                   value={citySearch}
@@ -94,7 +143,7 @@ export default function Header() {
                   className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-red-400 mb-2"
                 />
                 <button
-                  onClick={() => { setSelectedCity(null); setCityOpen(false); setCitySearch(''); }}
+                  onClick={() => pickCity(null)}
                   className={`w-full text-left px-3 py-2 rounded-xl text-sm transition mb-1 flex items-center gap-2 ${
                     !selectedCity ? 'bg-red-50 text-red-700 font-semibold' : 'text-gray-700 hover:bg-gray-50'
                   }`}
@@ -102,20 +151,22 @@ export default function Header() {
                   <GlobeIcon className="w-3.5 h-3.5 text-red-400 shrink-0" />
                   All Cities
                 </button>
-                <div className="max-h-48 overflow-y-auto space-y-0.5">
-                  {filteredCities.map((c) => (
-                    <button
-                      key={c.id}
-                      onClick={() => { setSelectedCity(c); setCityOpen(false); setCitySearch(''); }}
-                      className={`w-full text-left px-3 py-2 rounded-xl text-sm transition flex items-center gap-2 ${
-                        selectedCity?.id === c.id ? 'bg-red-50 text-red-700 font-semibold' : 'text-gray-700 hover:bg-gray-50'
-                      }`}
-                    >
-                      <LocationIcon className="w-3.5 h-3.5 text-red-400 shrink-0" />
-                      {c.name}
-                      {c.state && <span className="text-xs text-gray-400 ml-auto">{c.state}</span>}
-                    </button>
-                  ))}
+                <div className="max-h-52 overflow-y-auto space-y-0.5">
+                  {cities
+                    .filter((c) => c.name.toLowerCase().includes(citySearch.toLowerCase()))
+                    .map((c) => (
+                      <button
+                        key={c.id}
+                        onClick={() => pickCity(c)}
+                        className={`w-full text-left px-3 py-2 rounded-xl text-sm transition flex items-center gap-2 ${
+                          selectedCity?.id === c.id ? 'bg-red-50 text-red-700 font-semibold' : 'text-gray-700 hover:bg-gray-50'
+                        }`}
+                      >
+                        <LocationIcon className="w-3.5 h-3.5 text-red-400 shrink-0" />
+                        {c.name}
+                        {c.state && <span className="text-xs text-gray-400 ml-auto">{c.state}</span>}
+                      </button>
+                    ))}
                 </div>
               </div>
             )}
@@ -227,27 +278,37 @@ export default function Header() {
             <div className="px-4 pt-4 pb-2">
               <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Your City</p>
               <div className="flex flex-wrap gap-2">
+                {/* Auto-detect button */}
                 <button
-                  onClick={() => { setSelectedCity(null); setMobileOpen(false); }}
+                  onClick={detectCity}
+                  disabled={geoLoading || !cities.length}
+                  className="flex items-center gap-1.5 text-sm border rounded-full px-3 py-1.5 transition text-red-600 border-red-200 bg-red-50 hover:bg-red-100 disabled:opacity-40"
+                >
+                  {geoLoading
+                    ? <span className="w-3.5 h-3.5 border border-red-400 border-t-transparent rounded-full animate-spin" />
+                    : <LocationIcon className="w-3.5 h-3.5 shrink-0" />}
+                  Detect
+                </button>
+                {/* All Cities */}
+                <button
+                  onClick={() => pickCity(null)}
                   className={`flex items-center gap-1.5 text-sm border rounded-full px-3 py-1.5 transition ${
                     !selectedCity ? 'bg-red-600 text-white border-red-600' : 'text-gray-700 border-gray-200 bg-white'
                   }`}
                 >
                   <GlobeIcon className="w-3.5 h-3.5 shrink-0" />
-                  All Cities
+                  All
                 </button>
-                {['Noida', 'Delhi', 'Gurgaon', 'Faridabad', 'Ghaziabad'].map((name) => (
+                {/* Dynamic cities from API */}
+                {cities.map((c) => (
                   <button
-                    key={name}
-                    onClick={() => {
-                      setSelectedCity({ id: 0, name, slug: name.toLowerCase().replace(' ', '-'), state: '' });
-                      setMobileOpen(false);
-                    }}
-                    className={`flex items-center gap-1.5 text-sm border rounded-full px-3 py-1.5 transition ${
-                      selectedCity?.name === name ? 'bg-red-600 text-white border-red-600' : 'text-gray-700 border-gray-200 bg-white'
+                    key={c.id}
+                    onClick={() => pickCity(c)}
+                    className={`text-sm border rounded-full px-3 py-1.5 transition ${
+                      selectedCity?.id === c.id ? 'bg-red-600 text-white border-red-600' : 'text-gray-700 border-gray-200 bg-white'
                     }`}
                   >
-                    {name}
+                    {c.name}
                   </button>
                 ))}
               </div>

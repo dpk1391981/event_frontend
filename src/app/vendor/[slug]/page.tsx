@@ -26,19 +26,44 @@ function StarRating({ rating, count }: { rating: number; count: number }) {
 }
 
 // ── Suggested Packages Section ────────────────────────────────────────────────
-function SuggestedPackages({ vendorId, onSelect }: { vendorId: number; onSelect: (pkg: VendorPackage) => void }) {
+interface SuggestedPackagesProps {
+  vendorId: number;
+  onSelect: (pkg: VendorPackage) => void;
+  eventType?: string;   // e.g. 'wedding'
+  budget?: number;      // user's total budget from plan
+  categoryId?: number;  // primary category of the vendor
+}
+
+function SuggestedPackages({ vendorId, onSelect, eventType, budget, categoryId }: SuggestedPackagesProps) {
   const [packages, setPackages] = useState<VendorPackage[]>([]);
   const [loading, setLoading]   = useState(true);
 
   useEffect(() => {
-    packagesApi.search({ vendorId, limit: 6, status: 'active' })
+    const params: Record<string, unknown> = { vendorId, limit: 10, status: 'active' };
+    if (categoryId) params.categoryId = categoryId;
+    packagesApi.search(params)
       .then((r: unknown) => {
-        const data = (r as { data?: VendorPackage[] })?.data ?? (r as VendorPackage[]);
-        setPackages(Array.isArray(data) ? data : []);
+        const raw = (r as { data?: VendorPackage[] })?.data ?? (r as VendorPackage[]);
+        const list: VendorPackage[] = Array.isArray(raw) ? raw : [];
+
+        // Sort: boosted/featured first, then within-budget, then price asc
+        list.sort((a, b) => {
+          const aBoost = a.isBoosted || a.isFeatured ? 1 : 0;
+          const bBoost = b.isBoosted || b.isFeatured ? 1 : 0;
+          if (aBoost !== bBoost) return bBoost - aBoost;
+          if (budget) {
+            const aFit = a.price <= budget ? 1 : 0;
+            const bFit = b.price <= budget ? 1 : 0;
+            if (aFit !== bFit) return bFit - aFit;
+          }
+          return a.price - b.price;
+        });
+
+        setPackages(list);
       })
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, [vendorId]);
+  }, [vendorId, categoryId]);
 
   if (loading) {
     return (
@@ -53,73 +78,133 @@ function SuggestedPackages({ vendorId, onSelect }: { vendorId: number; onSelect:
 
   if (packages.length === 0) return null;
 
-  const tierConfig = [
-    { bg: 'bg-white',      border: 'border-gray-100', badge: '', headerBg: 'bg-gray-50' },
-    { bg: 'bg-white',      border: 'border-purple-200', badge: '⭐ Popular', headerBg: 'bg-purple-50' },
-    { bg: 'bg-white',      border: 'border-yellow-200', badge: '👑 Premium', headerBg: 'bg-yellow-50' },
-  ];
+  const eventLabel = eventType
+    ? eventType.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+    : null;
+
+  // Split into within-budget and others
+  const withinBudget = budget ? packages.filter(p => p.price <= budget) : packages;
+  const overBudget   = budget ? packages.filter(p => p.price > budget)  : [];
 
   return (
     <div>
       <div className="flex items-center justify-between mb-3">
-        <h2 className="font-bold text-gray-900">Packages & Pricing</h2>
+        <div>
+          <h2 className="font-bold text-gray-900">Packages & Pricing</h2>
+          {eventLabel && (
+            <p className="text-xs text-purple-600 font-semibold mt-0.5">
+              ✨ Showing packages relevant to your {eventLabel} plan
+            </p>
+          )}
+        </div>
         <span className="text-xs text-gray-400">{packages.length} available</span>
       </div>
+
+      {/* Within-budget packages */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        {packages.map((pkg, idx) => {
-          const cfg = tierConfig[Math.min(idx, tierConfig.length - 1)];
-          return (
-            <div key={pkg.id}
-              className={`rounded-2xl border-2 ${cfg.border} ${cfg.bg} overflow-hidden hover:shadow-md transition group`}>
-              <div className={`${cfg.headerBg} px-4 py-3 flex items-center justify-between`}>
-                <div>
-                  {cfg.badge && (
-                    <span className="text-[10px] font-extrabold text-purple-700 bg-purple-100 px-2 py-0.5 rounded-full mb-1 inline-block">
-                      {cfg.badge}
-                    </span>
-                  )}
-                  <p className="text-sm font-extrabold text-gray-900 leading-tight">{pkg.title}</p>
-                </div>
-                <div className="text-right shrink-0 ml-3">
-                  <p className="text-lg font-extrabold text-gray-900">
-                    ₹{pkg.price.toLocaleString('en-IN')}
-                  </p>
-                  {pkg.priceType === 'per_person' && (
-                    <p className="text-[10px] text-gray-400">per person</p>
-                  )}
-                </div>
-              </div>
-              {(pkg.description || (pkg.includes && pkg.includes.length > 0)) && (
-                <div className="px-4 py-3">
-                  {pkg.description && (
-                    <p className="text-xs text-gray-500 mb-2 leading-relaxed line-clamp-2">{pkg.description}</p>
-                  )}
-                  {pkg.includes && pkg.includes.length > 0 && (
-                    <ul className="space-y-1">
-                      {pkg.includes.slice(0, 4).map((item, i) => (
-                        <li key={i} className="flex items-start gap-1.5 text-xs text-gray-600">
-                          <span className="text-green-500 font-bold shrink-0 mt-0.5">✓</span>
-                          <span className="line-clamp-1">{item}</span>
-                        </li>
-                      ))}
-                      {pkg.includes.length > 4 && (
-                        <li className="text-xs text-gray-400">+{pkg.includes.length - 4} more included</li>
-                      )}
-                    </ul>
-                  )}
-                </div>
-              )}
-              <div className="px-4 pb-3">
-                <button
-                  onClick={() => onSelect(pkg)}
-                  className="w-full text-xs font-extrabold bg-purple-700 hover:bg-purple-800 text-white py-2.5 rounded-xl transition group-hover:shadow-sm"
-                >
-                  Get Quote for This Package →
-                </button>
-              </div>
-            </div>
-          );
-        })}
+        {withinBudget.map((pkg, idx) => (
+          <PackageCard
+            key={pkg.id}
+            pkg={pkg}
+            idx={idx}
+            isFeatured={idx === 0 && (pkg.isBoosted || pkg.isFeatured)}
+            withinBudget={!!budget}
+            onSelect={onSelect}
+          />
+        ))}
+      </div>
+
+      {/* Over-budget packages */}
+      {overBudget.length > 0 && (
+        <div className="mt-3">
+          <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-2">Other Packages</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {overBudget.slice(0, 2).map((pkg, idx) => (
+              <PackageCard key={pkg.id} pkg={pkg} idx={idx + withinBudget.length} isFeatured={false} withinBudget={false} onSelect={onSelect} />
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Package Card ──────────────────────────────────────────────────────────────
+function PackageCard({
+  pkg, idx, isFeatured, withinBudget, onSelect,
+}: {
+  pkg: VendorPackage;
+  idx: number;
+  isFeatured: boolean;
+  withinBudget: boolean;
+  onSelect: (pkg: VendorPackage) => void;
+}) {
+  const tiers = [
+    { border: 'border-purple-300', headerBg: 'bg-gradient-to-r from-purple-50 to-violet-50', btn: 'bg-purple-700 hover:bg-purple-800', badgeText: '⭐ Best Match' },
+    { border: 'border-gray-200',   headerBg: 'bg-gray-50',                                   btn: 'bg-gray-800 hover:bg-gray-900',   badgeText: '' },
+    { border: 'border-yellow-200', headerBg: 'bg-gradient-to-r from-yellow-50 to-amber-50',  btn: 'bg-amber-600 hover:bg-amber-700', badgeText: '👑 Premium' },
+  ];
+  const t = tiers[idx % tiers.length];
+  const showBestBadge = isFeatured || (withinBudget && idx === 0);
+
+  return (
+    <div className={`rounded-2xl border-2 ${t.border} bg-white overflow-hidden hover:shadow-lg transition-all duration-200 group flex flex-col`}>
+      {/* Header */}
+      <div className={`${t.headerBg} px-4 py-3 flex items-start justify-between gap-2`}>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-1.5 flex-wrap mb-1">
+            {showBestBadge && (
+              <span className="text-[10px] font-extrabold text-purple-700 bg-purple-100 px-2 py-0.5 rounded-full">
+                {t.badgeText || '⭐ Best Match'}
+              </span>
+            )}
+            {pkg.isBoosted && (
+              <span className="text-[10px] font-extrabold text-orange-700 bg-orange-100 px-2 py-0.5 rounded-full">🚀 Boosted</span>
+            )}
+            {withinBudget && (
+              <span className="text-[10px] font-extrabold text-green-700 bg-green-100 px-2 py-0.5 rounded-full">✓ Within budget</span>
+            )}
+          </div>
+          <p className="text-sm font-extrabold text-gray-900 leading-tight line-clamp-2">{pkg.title}</p>
+        </div>
+        <div className="text-right shrink-0">
+          <p className="text-lg font-extrabold text-gray-900">
+            ₹{pkg.price.toLocaleString('en-IN')}
+          </p>
+          {pkg.priceType === 'per_person' && (
+            <p className="text-[10px] text-gray-400 whitespace-nowrap">per person</p>
+          )}
+        </div>
+      </div>
+
+      {/* Body */}
+      <div className="px-4 py-3 flex-1">
+        {pkg.description && (
+          <p className="text-xs text-gray-500 mb-2 leading-relaxed line-clamp-2">{pkg.description}</p>
+        )}
+        {pkg.includes && pkg.includes.length > 0 && (
+          <ul className="space-y-1">
+            {pkg.includes.slice(0, 4).map((item, i) => (
+              <li key={i} className="flex items-start gap-1.5 text-xs text-gray-600">
+                <span className="text-green-500 font-bold shrink-0 mt-0.5">✓</span>
+                <span className="line-clamp-1">{item}</span>
+              </li>
+            ))}
+            {pkg.includes.length > 4 && (
+              <li className="text-xs text-gray-400 mt-0.5">+{pkg.includes.length - 4} more included</li>
+            )}
+          </ul>
+        )}
+      </div>
+
+      {/* CTA */}
+      <div className="px-4 pb-4">
+        <button
+          onClick={() => onSelect(pkg)}
+          className={`w-full text-xs font-extrabold ${t.btn} text-white py-2.5 rounded-xl transition shadow-sm group-hover:shadow-md`}
+        >
+          Get Quote for This Package →
+        </button>
       </div>
     </div>
   );
@@ -283,10 +368,13 @@ export default function VendorProfilePage() {
             </div>
           )}
 
-          {/* Suggested packages */}
+          {/* Suggested packages — context-aware when arriving from plan page */}
           <SuggestedPackages
             vendorId={vendor.id}
             onSelect={(pkg) => { setSelectedPkg(pkg); setShowLead(true); }}
+            eventType={fromEventType || undefined}
+            budget={fromBudget ? Number(fromBudget) : undefined}
+            categoryId={vendor.categories?.[0]?.id}
           />
 
           {/* Details */}

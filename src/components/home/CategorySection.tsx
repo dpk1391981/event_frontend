@@ -1,98 +1,80 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useAppStore } from '@/store/useAppStore';
-import { buildSeoUrl } from '@/lib/seo-urls';
+import { categoriesApi, locationsApi } from '@/lib/api';
+import { buildSeoUrlFromCategory } from '@/lib/seo-urls';
+import { Category, City } from '@/types';
 
-function WeddingIcon({ className = 'w-6 h-6' }: { className?: string }) {
-  return <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" /></svg>;
-}
-function BriefcaseIcon({ className = 'w-6 h-6' }: { className?: string }) {
-  return <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><rect x="2" y="7" width="20" height="14" rx="2" /><path strokeLinecap="round" d="M16 7V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v2" /></svg>;
-}
-function CakeIcon({ className = 'w-6 h-6' }: { className?: string }) {
-  return <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M21 15a2 2 0 01-2 2H5a2 2 0 01-2-2v-3a2 2 0 012-2h14a2 2 0 012 2v3zM3 17v3a1 1 0 001 1h16a1 1 0 001-1v-3" /><path strokeLinecap="round" d="M8 10V8m4 2V6m4 4V8" /></svg>;
-}
-function CameraIcon({ className = 'w-6 h-6' }: { className?: string }) {
-  return <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" /><circle cx="12" cy="13" r="3" /></svg>;
-}
-function ForkIcon({ className = 'w-6 h-6' }: { className?: string }) {
-  return <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" d="M12 3v18M6 3v5a4 4 0 008 0V3M18 3v5a2 2 0 01-2 2h-1v11" /></svg>;
-}
-function TrophyIcon({ className = 'w-6 h-6' }: { className?: string }) {
-  return <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 21h8m-4-4v4M6 3H3v4a3 3 0 003 3h1m5 0h1a3 3 0 003-3V3h-3M9 6h6v5a3 3 0 01-6 0V6z" /></svg>;
-}
-
-const CATEGORIES = [
-  {
-    label: 'Wedding', slug: 'wedding', Icon: WeddingIcon,
-    desc: 'Photographers, venues, makeup, mehendi & more',
-    count: '500+ vendors',
-    gradient: 'from-rose-500 to-pink-600',
-    lightBg: 'bg-rose-50', lightText: 'text-rose-700',
-    border: 'border-rose-200 hover:border-rose-400',
-    popular: ['Photography', 'Catering', 'Decoration', 'Makeup'],
-  },
-  {
-    label: 'Corporate', slug: 'corporate', Icon: BriefcaseIcon,
-    desc: 'Venues, AV equipment, catering & event mgmt',
-    count: '280+ vendors',
-    gradient: 'from-blue-500 to-indigo-600',
-    lightBg: 'bg-blue-50', lightText: 'text-blue-700',
-    border: 'border-blue-200 hover:border-blue-400',
-    popular: ['Venues', 'Catering', 'AV Setup', 'Photography'],
-  },
-  {
-    label: 'Birthday', slug: 'birthday', Icon: CakeIcon,
-    desc: 'Party venues, decorators, cakes & entertainers',
-    count: '320+ vendors',
-    gradient: 'from-orange-500 to-amber-500',
-    lightBg: 'bg-orange-50', lightText: 'text-orange-700',
-    border: 'border-orange-200 hover:border-orange-400',
-    popular: ['Venues', 'Decoration', 'Cakes', 'DJ'],
-  },
-  {
-    label: 'Photography', slug: 'photography', Icon: CameraIcon,
-    desc: 'Wedding, portrait, product & event photographers',
-    count: '400+ vendors',
-    gradient: 'from-teal-500 to-cyan-600',
-    lightBg: 'bg-teal-50', lightText: 'text-teal-700',
-    border: 'border-teal-200 hover:border-teal-400',
-    popular: ['Wedding', 'Pre-Wedding', 'Baby', 'Corporate'],
-  },
-  {
-    label: 'Catering', slug: 'catering', Icon: ForkIcon,
-    desc: 'Multi-cuisine, live counters, buffet & cocktails',
-    count: '250+ vendors',
-    gradient: 'from-emerald-500 to-green-600',
-    lightBg: 'bg-emerald-50', lightText: 'text-emerald-700',
-    border: 'border-emerald-200 hover:border-emerald-400',
-    popular: ['Veg', 'Non-Veg', 'Jain', 'Live Stations'],
-  },
-  {
-    label: 'Sports Events', slug: 'sports', Icon: TrophyIcon,
-    desc: 'Cricket, football, badminton & marathon events',
-    count: '80+ vendors',
-    gradient: 'from-purple-500 to-violet-600',
-    lightBg: 'bg-purple-50', lightText: 'text-purple-700',
-    border: 'border-purple-200 hover:border-purple-400',
-    popular: ['Cricket', 'Football', 'Marathon', 'Yoga'],
-  },
+/** Cycling palette for category cards — index mod length */
+const PALETTES = [
+  { gradient: 'from-rose-500 to-pink-600',    lightBg: 'bg-rose-50',    lightText: 'text-rose-700',    border: 'border-rose-200 hover:border-rose-400' },
+  { gradient: 'from-blue-500 to-indigo-600',  lightBg: 'bg-blue-50',    lightText: 'text-blue-700',    border: 'border-blue-200 hover:border-blue-400' },
+  { gradient: 'from-orange-500 to-amber-500', lightBg: 'bg-orange-50',  lightText: 'text-orange-700',  border: 'border-orange-200 hover:border-orange-400' },
+  { gradient: 'from-teal-500 to-cyan-600',    lightBg: 'bg-teal-50',    lightText: 'text-teal-700',    border: 'border-teal-200 hover:border-teal-400' },
+  { gradient: 'from-emerald-500 to-green-600',lightBg: 'bg-emerald-50', lightText: 'text-emerald-700', border: 'border-emerald-200 hover:border-emerald-400' },
+  { gradient: 'from-purple-500 to-violet-600',lightBg: 'bg-purple-50',  lightText: 'text-purple-700',  border: 'border-purple-200 hover:border-purple-400' },
+  { gradient: 'from-pink-500 to-fuchsia-600', lightBg: 'bg-pink-50',    lightText: 'text-pink-700',    border: 'border-pink-200 hover:border-pink-400' },
+  { gradient: 'from-sky-500 to-blue-600',     lightBg: 'bg-sky-50',     lightText: 'text-sky-700',     border: 'border-sky-200 hover:border-sky-400' },
 ];
 
-const CROSS_CITY_LINKS = [
-  { city: 'delhi', name: 'Delhi', cat: 'wedding' },
-  { city: 'gurgaon', name: 'Gurgaon', cat: 'corporate' },
-  { city: 'faridabad', name: 'Faridabad', cat: 'photography' },
-  { city: 'ghaziabad', name: 'Ghaziabad', cat: 'catering' },
-  { city: 'noida', name: 'Noida', cat: 'venue' },
-  { city: 'greater-noida', name: 'Greater Noida', cat: 'makeup' },
-];
+function CategoryIcon({ icon, className = 'w-6 h-6 text-white' }: { icon?: string; className?: string }) {
+  // If icon is an emoji or short string, render as text
+  if (icon && icon.length <= 4) {
+    return <span className="text-2xl leading-none">{icon}</span>;
+  }
+  // Default generic icon
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+    </svg>
+  );
+}
 
 export default function CategorySection() {
   const { selectedCity } = useAppStore();
-  const citySlug = selectedCity?.slug || 'noida';
-  const cityName = selectedCity?.name || 'Noida';
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [cities, setCities] = useState<City[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const citySlug = selectedCity?.slug || '';
+  const cityName = selectedCity?.name || 'Your City';
+
+  useEffect(() => {
+    Promise.all([
+      categoriesApi.getAll(),
+      locationsApi.getCities(),
+    ]).then(([cats, ctys]) => {
+      setCategories(((cats as unknown) as Category[]).filter((c) => c.isActive !== false));
+      setCities((ctys as unknown) as City[]);
+    }).catch(() => {}).finally(() => setLoading(false));
+  }, []);
+
+  // Cross-city links: pair first few cities with first few categories
+  const crossCityLinks = (() => {
+    const links: { city: City; cat: Category }[] = [];
+    const otherCities = cities.filter((c) => c.id !== selectedCity?.id).slice(0, 6);
+    otherCities.forEach((city, i) => {
+      const cat = categories[i % categories.length];
+      if (cat) links.push({ city, cat });
+    });
+    return links;
+  })();
+
+  if (loading) {
+    return (
+      <section className="py-14 bg-white">
+        <div className="max-w-7xl mx-auto px-4">
+          <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="h-40 rounded-2xl bg-gray-100 animate-pulse" />
+            ))}
+          </div>
+        </div>
+      </section>
+    );
+  }
 
   return (
     <section className="py-14 bg-white">
@@ -104,38 +86,36 @@ export default function CategorySection() {
             <br /><span className="text-red-500">Every Occasion</span>
           </h2>
           <p className="text-gray-500 text-sm">
-            Explore verified vendors across all event categories in {cityName}
+            Explore verified vendors across all event categories{selectedCity ? ` in ${cityName}` : ''}
           </p>
         </div>
 
         <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
-          {CATEGORIES.map((cat) => {
-            const href = buildSeoUrl(cat.slug, citySlug);
+          {categories.map((cat, idx) => {
+            const palette = PALETTES[idx % PALETTES.length];
+            const href = citySlug
+              ? buildSeoUrlFromCategory(cat, citySlug)
+              : `/search?q=${encodeURIComponent(cat.name)}&nlp=1`;
+
             return (
               <Link
-                key={cat.slug}
+                key={cat.id}
                 href={href}
-                className={`group bg-white border-2 ${cat.border} rounded-2xl p-5 transition-all duration-200 hover:-translate-y-1 hover:shadow-lg block`}
+                className={`group bg-white border-2 ${palette.border} rounded-2xl p-5 transition-all duration-200 hover:-translate-y-1 hover:shadow-lg block`}
               >
                 <div className="flex items-start gap-3 mb-3">
-                  <div className={`w-12 h-12 bg-gradient-to-br ${cat.gradient} rounded-xl flex items-center justify-center shadow-md group-hover:scale-110 transition-transform shrink-0`}>
-                    <cat.Icon className="w-6 h-6 text-white" />
+                  <div className={`w-12 h-12 bg-gradient-to-br ${palette.gradient} rounded-xl flex items-center justify-center shadow-md group-hover:scale-110 transition-transform shrink-0`}>
+                    <CategoryIcon icon={cat.icon} />
                   </div>
                   <div>
-                    <h3 className="font-extrabold text-gray-900 group-hover:text-red-700 transition text-base">{cat.label}</h3>
-                    <p className={`text-xs font-semibold ${cat.lightText} mt-0.5`}>{cat.count}</p>
+                    <h3 className="font-extrabold text-gray-900 group-hover:text-red-700 transition text-base">{cat.name}</h3>
                   </div>
                 </div>
-                <p className="text-xs text-gray-500 leading-relaxed mb-3 hidden sm:block">{cat.desc}</p>
-                <div className="flex flex-wrap gap-1.5">
-                  {cat.popular.map((sub) => (
-                    <span key={sub} className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${cat.lightBg} ${cat.lightText}`}>
-                      {sub}
-                    </span>
-                  ))}
-                </div>
-                <p className="text-xs text-gray-400 mt-3 flex items-center gap-1 group-hover:text-red-500 transition">
-                  {cat.label} in {cityName}
+                {cat.description && (
+                  <p className="text-xs text-gray-500 leading-relaxed mb-3 hidden sm:block line-clamp-2">{cat.description}</p>
+                )}
+                <p className="text-xs text-gray-400 mt-auto flex items-center gap-1 group-hover:text-red-500 transition">
+                  {cat.name}{citySlug ? ` in ${cityName}` : ''}
                   <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                   </svg>
@@ -145,21 +125,23 @@ export default function CategorySection() {
           })}
         </div>
 
-        {/* Cross-city SEO links */}
-        <div className="mt-10 pt-8 border-t border-gray-100">
-          <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4 text-center">Popular in Other Cities</p>
-          <div className="flex flex-wrap justify-center gap-3">
-            {CROSS_CITY_LINKS.map((link) => (
-              <Link
-                key={`${link.cat}-${link.city}`}
-                href={buildSeoUrl(link.cat, link.city)}
-                className="text-xs text-gray-600 hover:text-red-600 border border-gray-200 hover:border-red-200 px-3 py-1.5 rounded-full transition bg-white hover:bg-red-50"
-              >
-                {link.cat.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase())} in {link.name}
-              </Link>
-            ))}
+        {/* Cross-city SEO links — generated dynamically from DB cities + categories */}
+        {crossCityLinks.length > 0 && (
+          <div className="mt-10 pt-8 border-t border-gray-100">
+            <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4 text-center">Popular in Other Cities</p>
+            <div className="flex flex-wrap justify-center gap-3">
+              {crossCityLinks.map(({ city, cat }) => (
+                <Link
+                  key={`${cat.slug}-${city.slug}`}
+                  href={buildSeoUrlFromCategory(cat, city.slug)}
+                  className="text-xs text-gray-600 hover:text-red-600 border border-gray-200 hover:border-red-200 px-3 py-1.5 rounded-full transition bg-white hover:bg-red-50"
+                >
+                  {cat.name} in {city.name}
+                </Link>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </section>
   );

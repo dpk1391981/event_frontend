@@ -80,9 +80,14 @@ async function getPageData(categorySlug: string, citySlug: string, page = 1) {
       ? categories.find((c) => c.slug === categorySlug)
       : undefined;
 
+    // Vendors are tagged with SERVICE categories only.
+    // Event-type categories (wedding, birthday, corporate…) are not assigned to vendors.
+    // For event-type pages we drop the categoryId filter so all vendors in the city appear.
+    const effectiveCategoryId = catObj?.type === 'service' ? catObj.id : undefined;
+
     const results = await searchApi.search({
       cityId: cityObj.id,
-      categoryId: catObj?.id,
+      categoryId: effectiveCategoryId,
       limit: 12,
       page,
       sortBy: 'relevance',

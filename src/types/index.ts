@@ -20,9 +20,13 @@ export interface Category {
   description?: string;
   icon?: string;
   image?: string;
+  /** SEO-friendly plural set by admin, e.g. 'photographers'. Used for /photographers-in-noida URLs. */
+  seoPlural?: string;
   type: 'service' | 'event';
   children?: Category[];
   budgetAllocationPercent?: number;
+  sortOrder?: number;
+  isActive?: boolean;
 }
 
 export interface Vendor {

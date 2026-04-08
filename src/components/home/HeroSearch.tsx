@@ -5,16 +5,6 @@ import { useRouter } from 'next/navigation';
 import { locationsApi, categoriesApi } from '@/lib/api';
 import { City, Locality, Category } from '@/types';
 
-const SUGGESTIONS = [
-  'Wedding photographer Noida Sector 62',
-  'Caterer for 200 guests ₹3L budget',
-  'Birthday party venue in Noida',
-  'DJ for sangeet night ₹50k',
-  'Bridal makeup artist Gurgaon',
-  'Decorator for reception hall',
-  'Pandit for wedding ceremony Noida',
-];
-
 const PRICE_RANGES = [
   { label: 'Any Budget', value: '' },
   { label: 'Under ₹25K', value: '25000' },
@@ -56,10 +46,25 @@ export default function HeroSearch() {
     setSelectedLocality('');
   }, [selectedCity, cities]);
 
+  // Dynamic placeholder suggestions: generated from fetched categories + selected city name
+  const cityLabel = cities.find((c) => c.slug === selectedCity)?.name || cities[0]?.name || 'your city';
+  const suggestions = categories.length > 0
+    ? [
+        `${categories[0]?.name} for wedding in ${cityLabel}`,
+        `Caterer for 200 guests ₹3L budget`,
+        `Birthday party venue in ${cityLabel}`,
+        `DJ for sangeet night ₹50k`,
+        `${categories[1]?.name || 'Makeup artist'} in ${cityLabel}`,
+        `Decorator for reception hall`,
+        `${categories[2]?.name || 'Pandit'} for ceremony in ${cityLabel}`,
+      ]
+    : [`Search vendors in ${cityLabel}…`];
+
   useEffect(() => {
-    const interval = setInterval(() => setPlaceholderIdx((i) => (i + 1) % SUGGESTIONS.length), 3500);
+    const interval = setInterval(() => setPlaceholderIdx((i) => (i + 1) % suggestions.length), 3500);
     return () => clearInterval(interval);
-  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [suggestions.length]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -104,7 +109,7 @@ export default function HeroSearch() {
             onChange={(e) => setQuery(e.target.value)}
             onFocus={() => setFocused(true)}
             onBlur={() => setFocused(false)}
-            placeholder={SUGGESTIONS[placeholderIdx]}
+            placeholder={suggestions[placeholderIdx] || suggestions[0]}
             className="flex-1 px-3 py-5 bg-transparent outline-none text-gray-800 placeholder-gray-400 text-base sm:text-lg font-medium"
             autoComplete="off"
           />

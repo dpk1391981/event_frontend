@@ -6,81 +6,114 @@ import SmartLeadModal from './SmartLeadModal';
 
 const HIDDEN_PREFIXES = ['/admin', '/vendor/dashboard', '/partner', '/auth'];
 
+interface ModalCtx {
+  eventType?: string;
+  budget?: number;
+  guestCount?: number;
+  eventDate?: string;
+}
+
+function readCtxFromUrl(): ModalCtx {
+  if (typeof window === 'undefined') return {};
+  const p = new URLSearchParams(window.location.search);
+  return {
+    eventType:  p.get('eventType') || p.get('from')      || undefined,
+    budget:     p.get('budget')    ? Number(p.get('budget'))    : undefined,
+    guestCount: p.get('guests')    ? Number(p.get('guests'))    : undefined,
+    eventDate:  p.get('date')      || p.get('eventDate') || undefined,
+  };
+}
+
 export default function GlobalLeadCTA() {
   const pathname = usePathname();
   const [showModal, setShowModal] = useState(false);
-  const [visible, setVisible] = useState(false);
+  const [modalCtx,  setModalCtx]  = useState<ModalCtx>({});
+  const [visible, setVisible]     = useState(false);
+  const [dismissed, setDismissed] = useState(false);
+  const [hovered, setHovered]     = useState(false);
+  const [pulse, setPulse]         = useState(false);
 
-  // Show bar after 2s delay on mount — avoids flash on navigation
+  // Appear after 3s; pulse attention after 8s
   useEffect(() => {
-    const t = setTimeout(() => setVisible(true), 2000);
-    return () => clearTimeout(t);
+    const t1 = setTimeout(() => setVisible(true), 3000);
+    const t2 = setTimeout(() => setPulse(true),   8000);
+    return () => { clearTimeout(t1); clearTimeout(t2); };
   }, []);
 
   const isHidden = HIDDEN_PREFIXES.some((p) => pathname?.startsWith(p));
-
-  if (isHidden) return null;
+  if (isHidden || dismissed) return null;
 
   return (
     <>
-      {/* Sticky bottom CTA bar */}
+      {/* Floating help button — bottom-right */}
       <div
-        className={`fixed bottom-0 left-0 right-0 z-[100] transition-transform duration-500 ${
-          visible ? 'translate-y-0' : 'translate-y-full'
+        className={`fixed bottom-6 right-5 z-[120] flex flex-col items-end gap-2 transition-all duration-500 ${
+          visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8 pointer-events-none'
         }`}
       >
-        {/* Safe-area padding for mobile notch */}
-        <div className="px-3 pb-3 sm:px-6 sm:pb-4" style={{ paddingBottom: 'max(12px, env(safe-area-inset-bottom))' }}>
-          <div className="max-w-2xl mx-auto bg-gray-900 rounded-2xl shadow-2xl border border-white/10">
-            <div className="flex items-center gap-3 px-4 py-3 sm:px-5 sm:py-4">
-              {/* Lightning icon */}
-              <div className="w-9 h-9 bg-red-600 rounded-xl flex items-center justify-center shrink-0">
-                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                </svg>
-              </div>
-
-              {/* Copy */}
-              <div className="flex-1 min-w-0">
-                <p className="text-white font-bold text-sm leading-tight">
-                  Get best vendors instantly
-                </p>
-                <p className="text-gray-400 text-xs mt-0.5 hidden sm:block">
-                  Tell us your requirement · Free · No spam
-                </p>
-              </div>
-
-              {/* Buttons */}
-              <div className="flex items-center gap-2 shrink-0">
-                <button
-                  onClick={() => setShowModal(true)}
-                  className="bg-red-600 hover:bg-red-500 active:bg-red-700 text-white text-xs sm:text-sm font-bold px-4 py-2.5 rounded-xl transition"
-                >
-                  Get Quotes
-                </button>
-                <a
-                  href="tel:+919999999999"
-                  className="hidden sm:flex items-center gap-1.5 bg-white/10 hover:bg-white/20 text-white text-sm font-semibold px-3 py-2.5 rounded-xl transition"
-                >
-                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                      d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
-                  </svg>
-                  Help?
-                </a>
-              </div>
-            </div>
-          </div>
+        {/* Tooltip bubble — shown on hover */}
+        <div
+          className={`flex items-center gap-2.5 bg-gray-900 text-white text-xs font-semibold px-4 py-2.5 rounded-2xl shadow-xl whitespace-nowrap transition-all duration-200 ${
+            hovered ? 'opacity-100 scale-100 translate-y-0' : 'opacity-0 scale-95 translate-y-1 pointer-events-none'
+          }`}
+        >
+          <span className="text-red-400">💡</span>
+          Need help finding vendors?
+          {/* Tail */}
+          <span className="absolute -bottom-1.5 right-6 w-3 h-3 bg-gray-900 rotate-45" />
         </div>
+
+        {/* FAB row — button + dismiss */}
+        <div className="flex items-center gap-2">
+          {/* Dismiss × */}
+          {hovered && (
+            <button
+              onClick={() => setDismissed(true)}
+              className="w-6 h-6 bg-gray-200 hover:bg-gray-300 text-gray-600 rounded-full text-xs font-bold flex items-center justify-center transition"
+              aria-label="Dismiss"
+            >
+              ×
+            </button>
+          )}
+
+          {/* Main FAB */}
+          <button
+            onClick={() => { setModalCtx(readCtxFromUrl()); setShowModal(true); }}
+            onMouseEnter={() => setHovered(true)}
+            onMouseLeave={() => setHovered(false)}
+            aria-label="Get help finding vendors"
+            className="relative w-14 h-14 bg-gradient-to-br from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white rounded-full shadow-2xl shadow-red-300/60 flex items-center justify-center transition-all duration-200 hover:scale-110 active:scale-95"
+          >
+            {/* Pulse rings — shown until user interacts */}
+            {pulse && !hovered && (
+              <>
+                <span className="absolute inset-0 rounded-full bg-red-500/40 animate-ping" />
+                <span className="absolute inset-[-6px] rounded-full border-2 border-red-400/30 animate-ping" style={{ animationDelay: '0.3s' }} />
+              </>
+            )}
+
+            {/* Help icon */}
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.2}>
+              <path strokeLinecap="round" strokeLinejoin="round"
+                d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+
+            {/* Red dot badge */}
+            <span className="absolute top-0.5 right-0.5 w-3.5 h-3.5 bg-green-400 border-2 border-white rounded-full" />
+          </button>
+        </div>
+
+        {/* Label under button */}
+        <p className="text-[10px] font-bold text-gray-500 text-center pr-1">Get Quotes</p>
       </div>
 
-      {/* Add body padding so content isn't hidden behind bar */}
-      <div className="h-20 sm:h-24" />
-
-      {/* Modal rendered at root level — full z-index */}
       {showModal && (
         <SmartLeadModal
           mode="multi"
+          eventType={modalCtx.eventType}
+          budget={modalCtx.budget}
+          guestCount={modalCtx.guestCount}
+          eventDate={modalCtx.eventDate}
           onClose={() => setShowModal(false)}
         />
       )}

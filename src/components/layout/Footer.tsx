@@ -1,44 +1,34 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { buildCityEventsUrl, buildSeoUrl } from '@/lib/seo-urls';
+import { buildCityEventsUrl, buildSeoUrlFromCategory } from '@/lib/seo-urls';
 import { CheckCircleIcon, ChevronRightIcon, LocationIcon, LogoMark, RobotIcon } from '@/components/ui/Icon';
 import DynamicSeoFooterLinks from './DynamicSeoFooterLinks';
-
-const FOOTER_CITIES = [
-  { name: 'Noida', slug: 'noida' },
-  { name: 'Delhi', slug: 'delhi' },
-  { name: 'Gurgaon', slug: 'gurgaon' },
-  { name: 'Faridabad', slug: 'faridabad' },
-];
-
-const FOOTER_SERVICES = [
-  { name: 'Photography', slug: 'photography' },
-  { name: 'Catering', slug: 'catering' },
-  { name: 'Venue', slug: 'venue' },
-  { name: 'Decoration', slug: 'decoration' },
-  { name: 'DJ & Music', slug: 'dj-music' },
-];
-
-const FOOTER_EVENTS = [
-  { name: 'Wedding', slug: 'wedding' },
-  { name: 'Birthday', slug: 'birthday' },
-  { name: 'Corporate', slug: 'corporate' },
-  { name: 'Reception', slug: 'reception' },
-];
-
-const SEO_LINKS = [
-  { label: 'Wedding Photographers in Noida', href: buildSeoUrl('photography', 'noida') },
-  { label: 'Caterers in Delhi', href: buildSeoUrl('catering', 'delhi') },
-  { label: 'Wedding Venues in Gurgaon', href: buildSeoUrl('venue', 'gurgaon') },
-  { label: 'Decorators in Noida', href: buildSeoUrl('decoration', 'noida') },
-  { label: 'Corporate Events in Delhi', href: buildSeoUrl('corporate', 'delhi') },
-  { label: 'Birthday Planners in Gurgaon', href: buildSeoUrl('birthday', 'gurgaon') },
-];
+import { categoriesApi, locationsApi } from '@/lib/api';
+import { Category, City } from '@/types';
 
 export default function Footer() {
   const pathname = usePathname();
+  const [cities, setCities] = useState<City[]>([]);
+  const [services, setServices] = useState<Category[]>([]);
+  const [events, setEvents] = useState<Category[]>([]);
+
+  useEffect(() => {
+    locationsApi.getCities()
+      .then((d) => setCities(((d as unknown) as City[]).slice(0, 6)))
+      .catch(() => {});
+    categoriesApi.getAll('service')
+      .then((d) => setServices(((d as unknown) as Category[]).filter((c) => c.isActive !== false).slice(0, 5)))
+      .catch(() => {});
+    categoriesApi.getAll('event')
+      .then((d) => setEvents(((d as unknown) as Category[]).filter((c) => c.isActive !== false).slice(0, 4)))
+      .catch(() => {});
+  }, []);
+
+  // Use first city as the default for service links
+  const defaultCity = cities[0];
 
   if (pathname.startsWith('/vendor/dashboard') || pathname.startsWith('/admin')) {
     return null;
@@ -87,8 +77,8 @@ export default function Footer() {
           <div>
             <p className="mb-4 text-xs font-bold uppercase tracking-wider text-gray-200">Top Cities</p>
             <ul className="space-y-2 text-xs">
-              {FOOTER_CITIES.map((city) => (
-                <li key={city.slug}>
+              {cities.map((city) => (
+                <li key={city.id}>
                   <Link href={buildCityEventsUrl(city.slug)} className="flex items-center gap-1.5 transition hover:text-red-400">
                     <ChevronRightIcon className="h-2.5 w-2.5 shrink-0 text-red-600" /> {city.name}
                   </Link>
@@ -100,9 +90,12 @@ export default function Footer() {
           <div>
             <p className="mb-4 text-xs font-bold uppercase tracking-wider text-gray-200">Services</p>
             <ul className="space-y-2 text-xs">
-              {FOOTER_SERVICES.map((service) => (
-                <li key={service.slug}>
-                  <Link href={buildSeoUrl(service.slug, 'noida')} className="flex items-center gap-1.5 transition hover:text-red-400">
+              {services.map((service) => (
+                <li key={service.id}>
+                  <Link
+                    href={defaultCity ? buildSeoUrlFromCategory(service, defaultCity.slug) : `/search?q=${encodeURIComponent(service.name)}&nlp=1`}
+                    className="flex items-center gap-1.5 transition hover:text-red-400"
+                  >
                     <ChevronRightIcon className="h-2.5 w-2.5 shrink-0 text-red-600" /> {service.name}
                   </Link>
                 </li>
@@ -113,9 +106,12 @@ export default function Footer() {
           <div>
             <p className="mb-4 text-xs font-bold uppercase tracking-wider text-gray-200">For Vendors</p>
             <ul className="space-y-2 text-xs">
-              {FOOTER_EVENTS.map((event) => (
-                <li key={event.slug}>
-                  <Link href={buildSeoUrl(event.slug, 'noida')} className="flex items-center gap-1.5 transition hover:text-red-400">
+              {events.map((event) => (
+                <li key={event.id}>
+                  <Link
+                    href={defaultCity ? buildSeoUrlFromCategory(event, defaultCity.slug) : `/search?q=${encodeURIComponent(event.name)}&nlp=1`}
+                    className="flex items-center gap-1.5 transition hover:text-red-400"
+                  >
                     <ChevronRightIcon className="h-2.5 w-2.5 shrink-0 text-red-600" /> {event.name}
                   </Link>
                 </li>

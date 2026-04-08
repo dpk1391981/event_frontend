@@ -63,6 +63,8 @@ export interface Vendor {
   matchScore?: number;
   priceEstimate?: number;
   reason?: string;
+  /** Availability score: 100=available, 50=limited, 0=unavailable. Only present when eventDate was given. */
+  availabilityScore?: number;
 }
 
 export type LeadStatus = 'new' | 'viewed' | 'contacted' | 'converted' | 'rejected';

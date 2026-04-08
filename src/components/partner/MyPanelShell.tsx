@@ -7,7 +7,7 @@ import {
   CreditCard, Gem, LayoutDashboard, MapPin, Menu,
   MessageSquare, Package2, Phone, Plus, Search, Settings,
   ShieldCheck, Sparkles, Star, TrendingUp, Wallet, X,
-  Zap, ToggleLeft, ToggleRight, Trophy, LogOut,
+  Zap, ToggleLeft, ToggleRight, Trophy, LogOut, CalendarDays,
 } from 'lucide-react';
 import { Space_Grotesk } from 'next/font/google';
 import {
@@ -32,20 +32,21 @@ import {
 } from '@/lib/vendor-panel';
 import { useAppStore } from '@/store/useAppStore';
 import { useRouter } from 'next/navigation';
-import { locationsApi } from '@/lib/api';
+import { locationsApi, availabilityApi } from '@/lib/api';
 
 const displayFont = Space_Grotesk({ subsets: ['latin'] });
 
 // ─── Nav config ───────────────────────────────────────────────────────────────
 
 const PANEL_NAV: Array<{ id: PanelSection; label: string; shortLabel: string; Icon: typeof LayoutDashboard }> = [
-  { id: 'dashboard', label: 'Dashboard',  shortLabel: 'Home',     Icon: LayoutDashboard },
-  { id: 'leads',     label: 'Leads',      shortLabel: 'Leads',    Icon: MessageSquare },
-  { id: 'services',  label: 'Services',   shortLabel: 'Services', Icon: BriefcaseBusiness },
-  { id: 'packages',  label: 'Packages',   shortLabel: 'Packages', Icon: Package2 },
-  { id: 'wallet',    label: 'Wallet',     shortLabel: 'Wallet',   Icon: Wallet },
-  { id: 'profile',   label: 'Profile',    shortLabel: 'Profile',  Icon: ShieldCheck },
-  { id: 'settings',  label: 'Settings',   shortLabel: 'Settings', Icon: Settings },
+  { id: 'dashboard',    label: 'Dashboard',    shortLabel: 'Home',     Icon: LayoutDashboard },
+  { id: 'leads',        label: 'Leads',        shortLabel: 'Leads',    Icon: MessageSquare },
+  { id: 'services',     label: 'Services',     shortLabel: 'Services', Icon: BriefcaseBusiness },
+  { id: 'packages',     label: 'Packages',     shortLabel: 'Packages', Icon: Package2 },
+  { id: 'availability', label: 'Availability', shortLabel: 'Avail.',   Icon: CalendarDays },
+  { id: 'wallet',       label: 'Wallet',       shortLabel: 'Wallet',   Icon: Wallet },
+  { id: 'profile',      label: 'Profile',      shortLabel: 'Profile',  Icon: ShieldCheck },
+  { id: 'settings',     label: 'Settings',     shortLabel: 'Settings', Icon: Settings },
 ];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -379,6 +380,7 @@ export default function MyPanelShell({ data }: { data: VendorPanelData }) {
             {activeSection === 'profile' && (
               <ProfileSection checklist={data.profileChecklist} profileScore={data.profileScore} />
             )}
+            {activeSection === 'availability' && <AvailabilitySection />}
             {activeSection === 'settings' && <SettingsSection />}
           </main>
 
@@ -1176,6 +1178,249 @@ function ProfileSection({ checklist, profileScore }: { checklist: ProfileCheckli
             </div>
           ))}
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Availability ─────────────────────────────────────────────────────────────
+
+const DAY_ORDER = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] as const;
+const TIME_SLOTS_AVAIL = ['morning', 'afternoon', 'evening', 'full'] as const;
+type TimeSlot = typeof TIME_SLOTS_AVAIL[number];
+
+interface AvailabilityData {
+  availabilityType: 'always' | 'manual';
+  weeklySlots: Record<string, TimeSlot[]>;
+  blockedDates: string[];
+  calendar: Array<{ date: string; status: 'available' | 'limited' | 'blocked' | 'hold'; slots: TimeSlot[] }>;
+}
+
+function AvailabilitySection() {
+  const [avail, setAvail] = useState<AvailabilityData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [blockInput, setBlockInput] = useState('');
+  const [msg, setMsg] = useState('');
+
+  useEffect(() => {
+    availabilityApi.get()
+      .then((d: unknown) => setAvail(d as AvailabilityData))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  const toggleType = async () => {
+    if (!avail) return;
+    const next = avail.availabilityType === 'always' ? 'manual' : 'always';
+    setSaving(true);
+    try {
+      const updated = await availabilityApi.update({ availabilityType: next }) as unknown as AvailabilityData;
+      setAvail((prev) => prev ? { ...prev, ...updated, availabilityType: next } : null);
+      setMsg('Saved!');
+    } catch { setMsg('Error saving'); }
+    finally { setSaving(false); setTimeout(() => setMsg(''), 2000); }
+  };
+
+  const toggleSlot = async (day: string, slot: TimeSlot) => {
+    if (!avail) return;
+    const cur = avail.weeklySlots[day] || [];
+    const next = cur.includes(slot) ? cur.filter((s) => s !== slot) : [...cur, slot];
+    const updatedSlots = { ...avail.weeklySlots, [day]: next };
+    setAvail((prev) => prev ? { ...prev, weeklySlots: updatedSlots } : null);
+    try {
+      await availabilityApi.update({ weeklySlots: updatedSlots });
+    } catch { /* revert silently */ }
+  };
+
+  const blockDate = async () => {
+    if (!blockInput || !avail) return;
+    setSaving(true);
+    try {
+      await availabilityApi.blockDate(blockInput);
+      setAvail((prev) => prev ? { ...prev, blockedDates: [...prev.blockedDates, blockInput] } : null);
+      setBlockInput('');
+      setMsg('Date blocked');
+    } catch { setMsg('Error'); }
+    finally { setSaving(false); setTimeout(() => setMsg(''), 2000); }
+  };
+
+  const unblockDate = async (date: string) => {
+    if (!avail) return;
+    try {
+      await availabilityApi.unblockDate(date);
+      setAvail((prev) => prev ? { ...prev, blockedDates: prev.blockedDates.filter((d) => d !== date) } : null);
+    } catch { /* silent */ }
+  };
+
+  if (loading) return (
+    <div className="space-y-4 animate-pulse">
+      <div className="h-10 bg-gray-800 rounded-xl" />
+      <div className="h-64 bg-gray-800 rounded-xl" />
+    </div>
+  );
+
+  if (!avail) return (
+    <div className="text-center py-16 text-gray-500">Unable to load availability. Please refresh.</div>
+  );
+
+  const today = new Date().toISOString().substring(0, 10);
+  const calendarWeeks: AvailabilityData['calendar'][] = [];
+  let week: AvailabilityData['calendar'] = [];
+  avail.calendar.slice(0, 42).forEach((day, i) => {
+    week.push(day);
+    if (week.length === 7 || i === avail.calendar.length - 1) { calendarWeeks.push(week); week = []; }
+  });
+
+  return (
+    <div className="space-y-5">
+      <SectionHeader eyebrow="Availability" title="Manage Your Schedule" />
+
+      {/* Availability mode toggle */}
+      <div className="rounded-xl border border-gray-800 bg-gray-900 p-5">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <p className="font-bold text-white text-sm">Availability Mode</p>
+            <p className="text-xs text-gray-400 mt-0.5">
+              {avail.availabilityType === 'always'
+                ? 'You appear available to all buyers on all dates.'
+                : "Set your schedule manually \u2014 buyers only see dates you're free."}
+            </p>
+          </div>
+          <button
+            onClick={toggleType}
+            disabled={saving}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all ${
+              avail.availabilityType === 'always'
+                ? 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                : 'bg-gray-700 hover:bg-gray-600 text-gray-200'
+            }`}
+          >
+            {avail.availabilityType === 'always' ? <ToggleRight className="h-4 w-4" /> : <ToggleLeft className="h-4 w-4" />}
+            {avail.availabilityType === 'always' ? 'Always Available' : 'Manual Schedule'}
+          </button>
+        </div>
+        {msg && <p className="mt-2 text-xs text-emerald-400 font-semibold">{msg}</p>}
+      </div>
+
+      {/* Weekly schedule — only shown in manual mode */}
+      {avail.availabilityType === 'manual' && (
+        <div className="rounded-xl border border-gray-800 bg-gray-900 p-5">
+          <p className="font-bold text-white text-sm mb-4">Weekly Schedule</p>
+          <div className="space-y-3">
+            {DAY_ORDER.map((day) => {
+              const slots = avail.weeklySlots[day] || [];
+              return (
+                <div key={day} className="flex items-center gap-3 flex-wrap">
+                  <span className="w-24 text-xs font-semibold text-gray-400 capitalize">{day.slice(0, 3)}</span>
+                  <div className="flex gap-1.5 flex-wrap">
+                    {TIME_SLOTS_AVAIL.map((slot) => (
+                      <button
+                        key={slot}
+                        onClick={() => toggleSlot(day, slot)}
+                        className={`text-[10px] font-bold px-2.5 py-1 rounded-full border transition-all capitalize ${
+                          slots.includes(slot)
+                            ? 'bg-red-600 text-white border-red-600'
+                            : 'border-gray-700 text-gray-500 hover:border-gray-500'
+                        }`}
+                      >
+                        {slot === 'full' ? '📅 Full' : slot === 'morning' ? '🌅 Morn' : slot === 'afternoon' ? '☀️ Aft' : '🌆 Eve'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* 90-day mini calendar */}
+      <div className="rounded-xl border border-gray-800 bg-gray-900 p-5">
+        <div className="flex items-center justify-between mb-3">
+          <p className="font-bold text-white text-sm">Next 90 Days</p>
+          <div className="flex gap-3 text-[10px] text-gray-500">
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" /> Available</span>
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-500 inline-block" /> Limited</span>
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-600 inline-block" /> Blocked</span>
+          </div>
+        </div>
+        <div className="grid grid-cols-7 gap-1 text-center mb-1">
+          {['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'].map((d) => (
+            <div key={d} className="text-[9px] font-bold text-gray-600 uppercase">{d}</div>
+          ))}
+        </div>
+        <div className="space-y-1">
+          {calendarWeeks.map((week, wi) => (
+            <div key={wi} className="grid grid-cols-7 gap-1">
+              {week.map((day) => {
+                const isToday = day.date === today;
+                const isPast = day.date < today;
+                const bg = isPast ? 'bg-gray-800/30 text-gray-700'
+                  : day.status === 'available' ? 'bg-emerald-900/40 text-emerald-400 hover:bg-emerald-900/60 cursor-pointer'
+                  : day.status === 'limited' ? 'bg-amber-900/40 text-amber-400 hover:bg-amber-900/60 cursor-pointer'
+                  : day.status === 'hold' ? 'bg-blue-900/40 text-blue-400'
+                  : 'bg-red-900/40 text-red-400 hover:bg-red-900/60 cursor-pointer';
+                const dayNum = new Date(day.date + 'T12:00:00').getDate();
+                return (
+                  <button
+                    key={day.date}
+                    disabled={isPast || saving}
+                    title={`${day.date} — ${day.status}`}
+                    onClick={() => {
+                      if (isPast) return;
+                      if (day.status === 'blocked') unblockDate(day.date);
+                      else {
+                        availabilityApi.blockDate(day.date).then(() => {
+                          setAvail((prev) => prev ? { ...prev, blockedDates: [...prev.blockedDates, day.date] } : null);
+                        });
+                      }
+                    }}
+                    className={`w-full aspect-square rounded-lg text-[10px] font-bold transition-all flex items-center justify-center ${bg} ${isToday ? 'ring-2 ring-red-500' : ''}`}
+                  >
+                    {dayNum}
+                  </button>
+                );
+              })}
+            </div>
+          ))}
+        </div>
+        <p className="text-[10px] text-gray-600 mt-2">Click a date to block/unblock it.</p>
+      </div>
+
+      {/* Block a specific date */}
+      <div className="rounded-xl border border-gray-800 bg-gray-900 p-5">
+        <p className="font-bold text-white text-sm mb-3">Block a Specific Date</p>
+        <div className="flex gap-2">
+          <input
+            type="date"
+            value={blockInput}
+            min={today}
+            onChange={(e) => setBlockInput(e.target.value)}
+            className="border border-gray-700 bg-gray-800 text-white rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-red-500"
+          />
+          <button
+            onClick={blockDate}
+            disabled={!blockInput || saving}
+            className="bg-red-600 hover:bg-red-500 text-white text-sm font-bold px-4 py-2 rounded-xl transition disabled:opacity-40"
+          >
+            Block Date
+          </button>
+        </div>
+
+        {avail.blockedDates.length > 0 && (
+          <div className="mt-4">
+            <p className="text-xs font-semibold text-gray-400 mb-2">Currently blocked:</p>
+            <div className="flex flex-wrap gap-2">
+              {avail.blockedDates.sort().map((date) => (
+                <span key={date} className="flex items-center gap-1.5 bg-red-900/30 border border-red-700/40 text-red-400 text-xs font-semibold px-2.5 py-1 rounded-full">
+                  {new Date(date + 'T12:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+                  <button onClick={() => unblockDate(date)} className="text-red-400 hover:text-red-200 font-bold">×</button>
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

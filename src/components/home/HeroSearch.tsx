@@ -14,6 +14,14 @@ const PRICE_RANGES = [
   { label: 'Under ₹5L', value: '500000' },
 ];
 
+const TIME_SLOTS = [
+  { value: '', label: 'Any Time', icon: '🕐' },
+  { value: 'morning', label: 'Morning', icon: '🌅' },
+  { value: 'afternoon', label: 'Afternoon', icon: '☀️' },
+  { value: 'evening', label: 'Evening', icon: '🌆' },
+  { value: 'full', label: 'Full Day', icon: '📅' },
+];
+
 export default function HeroSearch() {
   const router = useRouter();
   const [query, setQuery] = useState('');
@@ -27,6 +35,8 @@ export default function HeroSearch() {
   const [selectedLocality, setSelectedLocality] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('');
   const [selectedPrice, setSelectedPrice] = useState('');
+  const [eventDate, setEventDate] = useState('');
+  const [eventTime, setEventTime] = useState('');
 
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -80,10 +90,12 @@ export default function HeroSearch() {
       if (loc) params.set('localityId', String(loc.id));
     }
     if (selectedPrice) params.set('maxBudget', selectedPrice);
+    if (eventDate) params.set('eventDate', eventDate);
+    if (eventTime) params.set('eventTime', eventTime);
     router.push(`/search?${params.toString()}`);
   };
 
-  const activeFilters = [selectedCategory, selectedCity, selectedLocality, selectedPrice].filter(Boolean).length;
+  const activeFilters = [selectedCategory, selectedCity, selectedLocality, selectedPrice, eventDate].filter(Boolean).length;
 
   return (
     <div className="w-full max-w-4xl mx-auto">
@@ -208,6 +220,47 @@ export default function HeroSearch() {
               </div>
             </div>
           ))}
+        </div>
+
+        {/* Date + Time row */}
+        <div className="bg-white rounded-b-xl border-t border-gray-100 px-3 py-3 flex flex-wrap gap-3 items-center">
+          {/* Event Date */}
+          <div className="relative flex items-center gap-2">
+            <label className="text-[10px] font-extrabold text-red-500 uppercase tracking-widest whitespace-nowrap">📅 Event Date</label>
+            <input
+              type="date"
+              value={eventDate}
+              min={new Date().toISOString().substring(0, 10)}
+              onChange={(e) => setEventDate(e.target.value)}
+              className={`border rounded-xl px-3 py-2 text-sm outline-none transition-all font-medium ${
+                eventDate ? 'border-red-300 text-red-700 bg-red-50' : 'border-gray-200 text-gray-600'
+              } focus:ring-2 focus:ring-red-100 focus:border-red-300`}
+            />
+            {eventDate && (
+              <button type="button" onClick={() => setEventDate('')} className="text-gray-400 hover:text-red-500 text-xs font-bold">×</button>
+            )}
+          </div>
+
+          {/* Time Slot */}
+          {eventDate && (
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-[10px] font-extrabold text-red-500 uppercase tracking-widest">⏰ Time</span>
+              {TIME_SLOTS.map((slot) => (
+                <button
+                  key={slot.value}
+                  type="button"
+                  onClick={() => setEventTime(slot.value === eventTime ? '' : slot.value)}
+                  className={`text-xs font-semibold px-2.5 py-1.5 rounded-full border transition-all ${
+                    eventTime === slot.value
+                      ? 'bg-red-600 text-white border-red-600'
+                      : 'border-gray-200 text-gray-600 hover:border-red-300'
+                  }`}
+                >
+                  {slot.icon} {slot.label}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Active filter pills */}

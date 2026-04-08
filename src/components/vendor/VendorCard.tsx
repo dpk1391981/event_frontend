@@ -119,6 +119,17 @@ export default function VendorCard({ vendor, showLeadButton = true, onGetQuote, 
           </p>
         )}
 
+        {vendor.availabilityScore !== undefined && (
+          <div className="mb-1.5">
+            {vendor.availabilityScore === 100 && (
+              <span className="inline-flex items-center gap-0.5 text-[9px] font-bold bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full">✅ Available</span>
+            )}
+            {vendor.availabilityScore === 50 && (
+              <span className="inline-flex items-center gap-0.5 text-[9px] font-bold bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full">⚠️ Limited</span>
+            )}
+          </div>
+        )}
+
         <StarRating rating={vendor.rating} count={vendor.reviewCount} />
 
         <div className="flex items-center gap-1 mt-2 text-xs text-gray-500">

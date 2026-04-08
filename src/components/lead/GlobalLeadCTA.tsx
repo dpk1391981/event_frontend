@@ -45,11 +45,18 @@ export default function GlobalLeadCTA() {
 
   return (
     <>
-      {/* Floating help button — bottom-right */}
+      {/* Floating help button
+          Mobile: raised higher to clear browser chrome + safe area
+          Web/Desktop: clean bottom-right anchor */}
       <div
-        className={`fixed bottom-6 right-5 z-[120] flex flex-col items-end gap-2 transition-all duration-500 ${
-          visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8 pointer-events-none'
-        }`}
+        className={[
+          'fixed z-[120] flex flex-col items-end gap-2 transition-all duration-500',
+          // Mobile: raised above browser chrome (bottom nav bar ~56px)
+          'bottom-20 right-4',
+          // Desktop: standard bottom-right corner
+          'sm:bottom-6 sm:right-6',
+          visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8 pointer-events-none',
+        ].join(' ')}
       >
         {/* Tooltip bubble — shown on hover */}
         <div

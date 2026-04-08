@@ -51,6 +51,10 @@ function ListSkeleton() {
   );
 }
 
+const TIME_SLOT_LABELS: Record<string, string> = {
+  morning: '🌅 Morning', afternoon: '☀️ Afternoon', evening: '🌆 Evening', full: '📅 Full Day',
+};
+
 function FilterPanel({
   filters,
   cities,
@@ -59,12 +63,12 @@ function FilterPanel({
   updateFilter,
   setFilters,
 }: {
-  filters: { cityId: number; categoryId: number; maxBudget: string; minRating: string; sortBy: string; page: number };
+  filters: { cityId: number; categoryId: number; maxBudget: string; minRating: string; sortBy: string; page: number; eventDate: string; eventTime: string };
   cities: City[];
   categories: Category[];
   activeFilterCount: number;
   updateFilter: (k: string, v: unknown) => void;
-  setFilters: (f: { cityId: number; categoryId: number; maxBudget: string; minRating: string; sortBy: string; page: number }) => void;
+  setFilters: (f: { cityId: number; categoryId: number; maxBudget: string; minRating: string; sortBy: string; page: number; eventDate: string; eventTime: string }) => void;
 }) {
   return (
     <div className="space-y-6">
@@ -72,7 +76,7 @@ function FilterPanel({
         <h3 className="font-extrabold text-gray-900 text-sm">Filters</h3>
         {activeFilterCount > 0 && (
           <button
-            onClick={() => setFilters({ cityId: 0, categoryId: 0, maxBudget: '', minRating: '', sortBy: 'relevance', page: 1 })}
+            onClick={() => setFilters({ cityId: 0, categoryId: 0, maxBudget: '', minRating: '', sortBy: 'relevance', page: 1, eventDate: '', eventTime: '' })}
             className="text-xs text-red-600 hover:text-red-700 font-bold"
           >
             Clear all ({activeFilterCount})
@@ -140,6 +144,46 @@ function FilterPanel({
           ))}
         </div>
       </div>
+
+      {/* Availability filter */}
+      <div>
+        <label className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest mb-2 block">📅 Event Date</label>
+        <input
+          type="date"
+          value={filters.eventDate}
+          min={new Date().toISOString().substring(0, 10)}
+          onChange={(e) => updateFilter('eventDate', e.target.value)}
+          className={`w-full border rounded-xl px-3 py-2.5 text-sm outline-none transition ${
+            filters.eventDate ? 'border-red-300 text-red-700 bg-red-50' : 'border-gray-200 text-gray-600'
+          } focus:ring-2 focus:ring-red-100`}
+        />
+        {filters.eventDate && (
+          <div className="mt-2">
+            <label className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest mb-1.5 block">⏰ Time Slot</label>
+            <div className="flex flex-wrap gap-1.5">
+              {[
+                { value: '', label: 'Any' },
+                { value: 'morning', label: '🌅 Morning' },
+                { value: 'afternoon', label: '☀️ Afternoon' },
+                { value: 'evening', label: '🌆 Evening' },
+                { value: 'full', label: '📅 Full Day' },
+              ].map((slot) => (
+                <button
+                  key={slot.value}
+                  onClick={() => updateFilter('eventTime', slot.value)}
+                  className={`text-xs font-semibold px-2.5 py-1 rounded-full border transition ${
+                    filters.eventTime === slot.value
+                      ? 'bg-red-600 text-white border-red-600'
+                      : 'border-gray-200 text-gray-600 hover:border-red-300'
+                  }`}
+                >
+                  {slot.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -168,6 +212,8 @@ function SearchPageInner() {
     minRating: '',
     sortBy: 'relevance',
     page: 1,
+    eventDate: searchParams.get('eventDate') || '',
+    eventTime: searchParams.get('eventTime') || '',
   });
 
   useEffect(() => {
@@ -180,7 +226,12 @@ function SearchPageInner() {
     try {
       let data: SearchResult;
       if (query && isNlp) {
-        data = await searchApi.nlpSearch(query, filters.cityId || undefined) as unknown as SearchResult;
+        data = await searchApi.nlpSearch(
+          query,
+          filters.cityId || undefined,
+          filters.eventDate || undefined,
+          filters.eventTime || undefined,
+        ) as unknown as SearchResult;
       } else {
         data = await searchApi.search({
           q: query,
@@ -190,6 +241,8 @@ function SearchPageInner() {
           rating: filters.minRating || undefined,
           sortBy: filters.sortBy,
           page: filters.page,
+          eventDate: filters.eventDate || undefined,
+          eventTime: filters.eventTime || undefined,
         }) as unknown as SearchResult;
       }
       setResult(data);
@@ -211,6 +264,7 @@ function SearchPageInner() {
     filters.maxBudget !== '',
     filters.minRating !== '',
     filters.sortBy !== 'relevance',
+    filters.eventDate !== '',
   ].filter(Boolean).length;
 
   const handleSearch = (q: string) => router.push(`/search?q=${encodeURIComponent(q)}&nlp=1`);
@@ -259,6 +313,29 @@ function SearchPageInner() {
               {result.resolvedLocation?.city && <Tag c="orange" label={`📍 ${result.resolvedLocation.city.name}`} />}
               {result.resolvedCategory && <Tag c="purple" label={`🏷️ ${result.resolvedCategory.name}`} />}
             </div>
+          </div>
+        )}
+
+        {/* Availability filter banner */}
+        {filters.eventDate && (
+          <div className="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-2xl p-3 mb-4 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <span className="text-green-700 font-bold text-sm">📅 Showing vendors available on</span>
+              <span className="bg-green-100 text-green-800 font-bold text-sm px-3 py-0.5 rounded-full">
+                {new Date(filters.eventDate + 'T12:00:00').toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })}
+              </span>
+              {filters.eventTime && (
+                <span className="bg-green-100 text-green-800 font-semibold text-xs px-2.5 py-0.5 rounded-full">
+                  {TIME_SLOT_LABELS[filters.eventTime] || filters.eventTime}
+                </span>
+              )}
+            </div>
+            <button
+              onClick={() => setFilters((f) => ({ ...f, eventDate: '', eventTime: '' }))}
+              className="text-green-500 hover:text-green-700 text-xs font-bold shrink-0"
+            >
+              Clear ×
+            </button>
           </div>
         )}
 
@@ -433,7 +510,7 @@ function SearchPageInner() {
                 </p>
                 <div className="flex gap-3 justify-center">
                   <button
-                    onClick={() => setFilters({ cityId: 0, categoryId: 0, maxBudget: '', minRating: '', sortBy: 'relevance', page: 1 })}
+                    onClick={() => setFilters({ cityId: 0, categoryId: 0, maxBudget: '', minRating: '', sortBy: 'relevance', page: 1, eventDate: '', eventTime: '' })}
                     className="bg-red-600 text-white px-6 py-2.5 rounded-full text-sm font-bold hover:bg-red-700 transition"
                   >
                     Clear Filters

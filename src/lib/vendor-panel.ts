@@ -28,6 +28,7 @@ export type PanelSection =
   | 'services'
   | 'packages'
   | 'wallet'
+  | 'availability'
   | 'profile'
   | 'settings';
 

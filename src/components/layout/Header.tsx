@@ -293,20 +293,24 @@ export default function Header() {
               </div>
             ) : (
               <>
-                <button
-                  onClick={openAuthModal}
+                {/* Desktop: text link → full login page */}
+                <Link href="/auth/login"
                   className="hidden sm:block text-sm font-semibold px-3 py-2 rounded-full text-gray-700 hover:text-red-600 transition">
                   Login
-                </button>
-                {/* On mobile: full pill with icon; on desktop: text only */}
+                </Link>
+                {/* Desktop: Register pill → full login page */}
+                <Link href="/auth/login"
+                  className="hidden sm:flex items-center gap-1.5 bg-gradient-to-r from-red-600 to-rose-600 text-white text-sm font-bold px-4 py-2 rounded-full hover:from-red-700 hover:to-rose-700 transition shadow-md shadow-red-200 whitespace-nowrap">
+                  Register
+                </Link>
+                {/* Mobile only: Login pill → opens bottom sheet */}
                 <button
                   onClick={openAuthModal}
-                  className="bg-gradient-to-r from-red-600 to-rose-600 text-white text-sm font-bold px-3 sm:px-4 py-2 rounded-full hover:from-red-700 hover:to-rose-700 active:scale-95 transition shadow-md shadow-red-200 whitespace-nowrap flex items-center gap-1.5">
-                  <svg className="w-3.5 h-3.5 sm:hidden" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  className="sm:hidden bg-gradient-to-r from-red-600 to-rose-600 text-white text-sm font-bold px-3 py-2 rounded-full hover:from-red-700 hover:to-rose-700 active:scale-95 transition shadow-md shadow-red-200 whitespace-nowrap flex items-center gap-1.5">
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                   </svg>
-                  <span className="hidden sm:inline">Register</span>
-                  <span className="sm:hidden">Login</span>
+                  Login
                 </button>
               </>
             )}

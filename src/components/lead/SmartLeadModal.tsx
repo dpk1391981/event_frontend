@@ -147,9 +147,9 @@ export default function SmartLeadModal({
   /* ── Success state ───────────────────────────────────────────────────────── */
   if (success) {
     return (
-      <div className="fixed inset-0 z-[9999] flex items-end sm:items-center justify-center p-4"
+      <div className="fixed inset-0 z-[9999] flex items-end sm:items-center justify-center sm:p-4"
         style={{ backgroundColor: 'rgba(0,0,0,0.65)' }} onMouseDown={onClose}>
-        <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl p-8 text-center"
+        <div className="bg-white rounded-t-3xl sm:rounded-2xl w-full sm:max-w-md shadow-2xl p-8 text-center"
           onMouseDown={(e) => e.stopPropagation()}>
           <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
             <svg className="w-10 h-10 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -174,13 +174,20 @@ export default function SmartLeadModal({
 
   /* ── Form ────────────────────────────────────────────────────────────────── */
   return (
-    <div className="fixed inset-0 z-[9999] flex items-end sm:items-center justify-center p-4"
+    <div className="fixed inset-0 z-[9999] flex items-end sm:items-center justify-center sm:p-4"
       style={{ backgroundColor: 'rgba(0,0,0,0.65)' }} onMouseDown={onClose}>
-      <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl max-h-[92vh] overflow-y-auto"
-        onMouseDown={(e) => e.stopPropagation()}>
+      <div
+        className="bg-white rounded-t-3xl sm:rounded-2xl w-full sm:max-w-md shadow-2xl max-h-[92dvh] overflow-y-auto"
+        onMouseDown={(e) => e.stopPropagation()}
+        style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
+      >
+        {/* Drag handle — mobile only */}
+        <div className="sm:hidden flex justify-center pt-3 pb-1">
+          <div className="w-10 h-1.5 bg-gray-200 rounded-full" />
+        </div>
 
         {/* Header */}
-        <div className="sticky top-0 bg-white px-5 pt-5 pb-4 border-b border-gray-100 rounded-t-2xl z-10">
+        <div className="sticky top-0 bg-white px-5 pt-3 pb-4 border-b border-gray-100 rounded-t-3xl sm:rounded-t-2xl z-10">
           <div className="flex items-start justify-between gap-3">
             <div>
               <h2 className="text-lg font-bold text-gray-900 leading-snug">

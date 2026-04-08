@@ -21,6 +21,21 @@ function Stars({ r, count }: { r: number; count: number }) {
   );
 }
 
+function AvailabilityBadge({ score }: { score: number | undefined }) {
+  if (score === undefined) return null;
+  if (score === 100) return (
+    <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-green-100 text-green-700 border border-green-200 px-2 py-0.5 rounded-full">
+      ✅ Available
+    </span>
+  );
+  if (score === 50) return (
+    <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-amber-100 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-full">
+      ⚠️ Limited
+    </span>
+  );
+  return null; // score === 0 vendors are filtered out before rendering
+}
+
 interface Props {
   vendor: Vendor;
   rank?: number;
@@ -134,6 +149,13 @@ export default function VendorListCard({ vendor, rank, onGetQuote }: Props) {
               </div>
             )}
           </div>
+
+          {/* Availability badge */}
+          {vendor.availabilityScore !== undefined && (
+            <div className="mb-1.5">
+              <AvailabilityBadge score={vendor.availabilityScore} />
+            </div>
+          )}
 
           {/* Rating */}
           <Stars r={r} count={vendor.reviewCount} />

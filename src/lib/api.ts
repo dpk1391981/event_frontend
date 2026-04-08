@@ -34,11 +34,20 @@ export const authApi = {
 // ─── Search ──────────────────────────────────────────────────────────────────
 export const searchApi = {
   search: (params: Record<string, unknown>) => api.get('/search', { params }),
-  nlpSearch: (q: string, cityId?: number) =>
-    api.get('/search/nlp', { params: { q, cityId } }),
-  eventPlan: (eventType: string, budget: number, cityId: number, guestCount?: number) =>
-    api.get('/search/event-plan', { params: { eventType, budget, cityId, guestCount } }),
+  nlpSearch: (q: string, cityId?: number, eventDate?: string, eventTime?: string) =>
+    api.get('/search/nlp', { params: { q, cityId, eventDate, eventTime } }),
+  eventPlan: (eventType: string, budget: number, cityId: number, guestCount?: number, eventDate?: string) =>
+    api.get('/search/event-plan', { params: { eventType, budget, cityId, guestCount, eventDate } }),
   parseIntent: (q: string) => api.get('/search/parse-intent', { params: { q } }),
+};
+
+// ─── Vendor Availability ──────────────────────────────────────────────────────
+export const availabilityApi = {
+  get: () => api.get('/vendor/availability'),
+  update: (data: { availabilityType?: 'always' | 'manual'; weeklySlots?: Record<string, string[]> }) =>
+    api.patch('/vendor/availability', data),
+  blockDate: (date: string) => api.post('/vendor/availability/block', { date }),
+  unblockDate: (date: string) => api.delete(`/vendor/availability/block/${date}`),
 };
 
 // ─── Vendors ─────────────────────────────────────────────────────────────────

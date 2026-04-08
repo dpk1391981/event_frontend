@@ -28,6 +28,14 @@ export default function AuthBottomSheet() {
     if (user && authModalOpen) closeAuthModal();
   }, [user, authModalOpen]);
 
+  // On desktop (≥640px), redirect to the full login page instead of showing the modal
+  useEffect(() => {
+    if (authModalOpen && typeof window !== 'undefined' && window.innerWidth >= 640) {
+      closeAuthModal();
+      router.push('/auth/login');
+    }
+  }, [authModalOpen]);
+
   // Lock body scroll while open
   useEffect(() => {
     if (authModalOpen) {
@@ -120,20 +128,18 @@ export default function AuthBottomSheet() {
         onClick={closeAuthModal}
       />
 
-      {/* Sheet — bottom on mobile, centered on desktop */}
+      {/* Sheet — bottom sheet on mobile, centered modal on desktop */}
       <div
         ref={sheetRef}
-        className="
-          fixed z-[201]
-          /* Mobile: full-width bottom sheet */
-          bottom-0 left-0 right-0 rounded-t-3xl
-          /* Desktop: centered modal */
-          sm:bottom-auto sm:top-1/2 sm:left-1/2 sm:-translate-x-1/2 sm:-translate-y-1/2
-          sm:rounded-3xl sm:max-w-md sm:w-full sm:mx-4
-          bg-white shadow-2xl
-          sheet-up sm:animate-none
-          max-h-[92dvh] overflow-y-auto
-        "
+        className={[
+          'fixed z-[201] bg-white shadow-2xl overflow-y-auto',
+          // Mobile: full-width bottom sheet
+          'bottom-0 left-0 right-0 rounded-t-3xl max-h-[92dvh] sheet-up',
+          // Desktop: centered modal (explicitly clear mobile left/right/bottom)
+          'sm:bottom-auto sm:left-1/2 sm:right-auto sm:top-1/2',
+          'sm:-translate-x-1/2 sm:-translate-y-1/2',
+          'sm:rounded-3xl sm:max-w-md sm:w-[calc(100%-2rem)] sm:animate-none sm:max-h-[90dvh]',
+        ].join(' ')}
         style={{ paddingBottom: 'env(safe-area-inset-bottom, 16px)' }}
       >
         {/* Drag handle */}

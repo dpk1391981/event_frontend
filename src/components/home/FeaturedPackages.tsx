@@ -112,7 +112,21 @@ export default function FeaturedPackages() {
 
               {/* Price */}
               <div className="flex items-center justify-between mt-3 pt-3 border-t border-[#f0e8dc]">
-                <PriceLabel pkg={pkg} />
+                <div>
+                  {Number(pkg.originalPrice) > 0 && Number(pkg.savingsPercent) > 0 && (
+                    <p className="text-[10px] text-slate-400 line-through">
+                      {Number(pkg.originalPrice) >= 100000
+                        ? `₹${(Number(pkg.originalPrice) / 100000).toFixed(1)}L`
+                        : `₹${Math.round(Number(pkg.originalPrice) / 1000)}K`}
+                    </p>
+                  )}
+                  <PriceLabel pkg={pkg} />
+                  {Number(pkg.savingsPercent) > 0 && (
+                    <span className="inline-block mt-0.5 rounded-full bg-emerald-100 px-2 py-0.5 text-[9px] font-bold text-emerald-700">
+                      {Math.round(Number(pkg.savingsPercent))}% off
+                    </span>
+                  )}
+                </div>
                 {pkg.city && (
                   <span className="text-[11px] font-semibold text-slate-500">{pkg.city.name}</span>
                 )}

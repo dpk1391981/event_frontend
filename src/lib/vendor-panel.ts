@@ -82,8 +82,19 @@ export interface PackageItem {
   priceType: 'fixed' | 'per_person';
   category: string;
   categoryId?: number;
+  // Bundled service IDs
+  serviceIds: number[];
   includes: string[];
   description: string;
+  // Savings from bundling
+  originalPrice: number;
+  discountAmount: number;
+  savingsPercent: number;
+  // Budget tier tag
+  tag: 'budget' | 'standard' | 'premium' | 'luxury' | '';
+  packageType: 'fixed' | 'custom';
+  minGuests?: number;
+  maxGuests?: number;
   locations: string[];
   preferredLocationIds: number[];
   localityIds: number[];
@@ -156,7 +167,7 @@ export interface VendorPanelData {
   profileChecklist: ProfileChecklistItem[];
   walletHistory: WalletEntry[];
   services: VendorServiceItem[];
-  serviceCategories: string[];
+  serviceCategories: Array<{ id: number; name: string }>;
   cities: Array<Pick<City, 'id' | 'name'>>;
   packageStats: VendorDashboard['packageStats'];
 }
@@ -217,14 +228,22 @@ function mapPackageToPanel(pkg: VendorPackage): PackageItem {
     priceType: pkg.priceType,
     category: pkg.category?.name ?? '',
     categoryId: pkg.categoryId,
+    serviceIds: pkg.serviceIds ?? [],
     includes: pkg.includes ?? [],
     description: pkg.description ?? '',
+    originalPrice: pkg.originalPrice ?? 0,
+    discountAmount: pkg.discountAmount ?? 0,
+    savingsPercent: pkg.savingsPercent ?? 0,
+    tag: (pkg.tag ?? '') as PackageItem['tag'],
+    packageType: pkg.packageType ?? 'fixed',
+    minGuests: pkg.minGuests,
+    maxGuests: pkg.maxGuests,
     locations: pkg.city ? [pkg.city.name] : [],
     preferredLocationIds: pkg.preferredLocationIds ?? [],
     localityIds: pkg.localityIds ?? [],
     cityId: pkg.cityId,
     cityName: pkg.city?.name,
-    leadsGenerated: pkg.leadsCount ?? 0,
+    leadsGenerated: (pkg as any).leadsCount ?? 0,
     status: pkg.status,
     boosted: pkg.isBoosted,
     featured: pkg.isFeatured,
@@ -429,7 +448,7 @@ export async function getVendorPanelData(): Promise<VendorPanelData> {
     profileChecklist,
     walletHistory,
     services,
-    serviceCategories: categories.map((c) => c.name),
+    serviceCategories: categories.map((c) => ({ id: c.id, name: c.name })),
     cities,
     packageStats: dashboard?.packageStats ?? {
       total: packages.length,
@@ -479,6 +498,10 @@ export async function deletePackage(id: number) {
 
 export async function boostPackage(id: number) {
   return packagesApi.boost(id);
+}
+
+export async function setPackageFeatured(id: number, featured: boolean) {
+  return packagesApi.setFeatured(id, featured);
 }
 
 export async function createService(data: Omit<VendorServiceItem, 'id' | 'vendorId' | 'createdAt' | 'sortOrder'>) {

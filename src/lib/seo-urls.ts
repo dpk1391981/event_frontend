@@ -128,6 +128,9 @@ export function parseSeoSlug(slug: string): {
   displayService: string;    // human label
   isAllEvents: boolean;
 } | null {
+  // Reserved prefixes — handled by dedicated pages, not the SEO listing page
+  if (slug.startsWith('plan-event-in-')) return null;
+
   // Must contain "-in-"
   const inIdx = slug.lastIndexOf('-in-');
   if (inIdx <= 0) return null;

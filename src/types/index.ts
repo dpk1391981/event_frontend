@@ -101,7 +101,20 @@ export interface VendorPackage {
   price: number;
   priceType: 'fixed' | 'per_person';
   description?: string;
+  // Bundled service IDs
+  serviceIds?: number[];
   includes?: string[];
+  addons?: Array<{ label: string; price: number }>;
+  availabilityLinked?: boolean;
+  // Savings computed from service prices
+  originalPrice?: number;
+  discountAmount?: number;
+  savingsPercent?: number;
+  // Budget tier tag
+  tag?: 'budget' | 'standard' | 'premium' | 'luxury';
+  packageType?: 'fixed' | 'custom';
+  minGuests?: number;
+  maxGuests?: number;
   cityId?: number;
   city?: City;
   localityIds?: number[];

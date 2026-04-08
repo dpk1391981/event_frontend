@@ -145,8 +145,11 @@ export default function Header() {
       <header className="sticky top-0 z-50 bg-white border-b border-gray-100 shadow-sm">
         <div className="max-w-7xl mx-auto px-3 sm:px-6 h-14 sm:h-16 flex items-center gap-2 sm:gap-3">
 
-          {/* Logo */}
-          <Link href="/" className="flex items-center gap-2 shrink-0 group">
+          {/* Logo — goes to city landing page when a city is selected */}
+          <Link
+            href={selectedCity ? `/plan-event-in-${selectedCity.slug}` : '/'}
+            className="flex items-center gap-2 shrink-0 group"
+          >
             <LogoMark className="w-8 h-8 sm:w-9 sm:h-9 shrink-0" />
             <div className="hidden sm:flex flex-col leading-none">
               <span className="font-black text-[17px] tracking-tight text-gray-900">

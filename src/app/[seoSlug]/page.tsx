@@ -25,6 +25,7 @@ import type { SearchResult, City, Category } from '@/types';
 import VendorListCard from '@/components/vendor/VendorListCard';
 import { Suspense } from 'react';
 import PaginationScroller from '@/components/vendor/PaginationScroller';
+import CityLandingPage from '@/components/home/CityLandingPage';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1';
 
@@ -107,6 +108,23 @@ export async function generateStaticParams() {
 /* ── Metadata — DB-driven with fallback ───────────────────────────────── */
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { seoSlug } = await params;
+
+  // City landing pages handled here since plan-event-in-[city] folder is a static segment
+  if (seoSlug.startsWith('plan-event-in-')) {
+    const citySlug = seoSlug.slice('plan-event-in-'.length);
+    const cityName = citySlug.split('-').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+    return {
+      title: `Plan Your Event in ${cityName} — PlanToday`,
+      description: `Find top-rated wedding photographers, caterers, venues, DJs & decorators in ${cityName}. AI-powered vendor matching. Free quotes instantly.`,
+      alternates: { canonical: `/plan-event-in-${citySlug}` },
+      openGraph: {
+        title: `Plan Your Event in ${cityName} — PlanToday`,
+        description: `2000+ verified vendors in ${cityName}. Free instant quotes, AI-powered matching.`,
+        type: 'website',
+      },
+    };
+  }
+
   const parsed = parseSeoSlug(seoSlug);
   if (!parsed) return { title: 'Not Found', robots: { index: false, follow: false } };
 
@@ -150,6 +168,14 @@ export default async function SeoListingPage({ params, searchParams }: Props) {
   const { seoSlug } = await params;
   const sp = searchParams ? await searchParams : {};
   const page = Number(sp.page) || 1;
+
+  // City landing pages — plan-event-in-[city] folder is treated as static by Next.js App Router
+  // so these URLs land here instead; we render the city landing page directly.
+  if (seoSlug.startsWith('plan-event-in-')) {
+    const citySlug = seoSlug.slice('plan-event-in-'.length);
+    if (!citySlug) notFound();
+    return <CityLandingPage citySlug={citySlug} />;
+  }
 
   const parsed = parseSeoSlug(seoSlug);
   if (!parsed) notFound();

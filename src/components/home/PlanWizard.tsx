@@ -22,6 +22,13 @@ const BUDGET_PRESETS = [
   { label: '₹10L+', value: '1000000' },
 ];
 
+const TIME_SLOTS = [
+  { value: 'morning',   icon: '🌅', label: 'Morning' },
+  { value: 'afternoon', icon: '☀️', label: 'Afternoon' },
+  { value: 'evening',   icon: '🌆', label: 'Evening' },
+  { value: 'full',      icon: '📅', label: 'Full Day' },
+];
+
 function fmt(v: string) {
   const n = Number(v);
   if (!n) return '';
@@ -33,10 +40,12 @@ export default function PlanWizard() {
   const { selectedCity } = useAppStore();
   const [cities, setCities] = useState<City[]>([]);
   const [form, setForm] = useState({
-    eventType: 'wedding',
-    cityId:    '',
-    budget:    '',
-    guestCount:'',
+    eventType:  'wedding',
+    cityId:     '',
+    budget:     '',
+    guestCount: '',
+    eventDate:  '',
+    eventTime:  '',
   });
 
   useEffect(() => {
@@ -48,21 +57,25 @@ export default function PlanWizard() {
     if (selectedCity && !form.cityId) {
       setForm((f) => ({ ...f, cityId: String(selectedCity.id) }));
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCity]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.cityId || !form.budget) return;
     const p = new URLSearchParams({
-      eventType:   form.eventType,
-      budget:      form.budget,
-      cityId:      form.cityId,
-      autosubmit:  '1',
+      eventType:  form.eventType,
+      budget:     form.budget,
+      cityId:     form.cityId,
+      autosubmit: '1',
       ...(form.guestCount && { guestCount: form.guestCount }),
+      ...(form.eventDate  && { eventDate:  form.eventDate }),
+      ...(form.eventTime  && { eventTime:  form.eventTime }),
     });
     router.push(`/plan?${p.toString()}`);
   };
 
+  const today = new Date().toISOString().substring(0, 10);
   const ready = form.cityId && form.budget;
 
   return (
@@ -70,7 +83,7 @@ export default function PlanWizard() {
       onSubmit={handleSubmit}
       className="bg-white/10 backdrop-blur-md border border-white/20 rounded-2xl sm:rounded-2xl p-4 sm:p-6 shadow-2xl text-left"
     >
-      {/* ── Event type — horizontal scroll on mobile ─────────────── */}
+      {/* ── Event type ───────────────────────────────────────────────── */}
       <div className="mb-4 sm:mb-5">
         <p className="text-[10px] sm:text-xs font-bold text-white/50 uppercase tracking-widest mb-2.5">Event Type</p>
         <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide snap-x">
@@ -92,7 +105,7 @@ export default function PlanWizard() {
         </div>
       </div>
 
-      {/* ── City + Budget — stacked on mobile, side-by-side on sm+ ── */}
+      {/* ── City + Budget + Guests ────────────────────────────────────── */}
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4 sm:mb-5">
 
         {/* City */}
@@ -124,7 +137,6 @@ export default function PlanWizard() {
             onChange={(e) => setForm({ ...form, budget: e.target.value })}
             className="w-full bg-white/10 border border-white/20 rounded-xl px-3 py-3 text-sm text-white placeholder-white/30 outline-none focus:ring-2 focus:ring-red-400/50 min-h-[44px]"
           />
-          {/* Budget presets */}
           <div className="flex gap-1.5 mt-1.5 flex-wrap">
             {BUDGET_PRESETS.map((b) => (
               <button
@@ -143,9 +155,11 @@ export default function PlanWizard() {
           </div>
         </div>
 
-        {/* Guests — full width on mobile, normal on sm+ */}
+        {/* Guests */}
         <div className="col-span-2 sm:col-span-1">
-          <label className="text-[10px] sm:text-xs font-bold text-white/50 uppercase tracking-widest mb-1.5 block">Guests <span className="normal-case font-normal text-white/30">(optional)</span></label>
+          <label className="text-[10px] sm:text-xs font-bold text-white/50 uppercase tracking-widest mb-1.5 block">
+            Guests <span className="normal-case font-normal text-white/30">(optional)</span>
+          </label>
           <input
             type="number" inputMode="numeric"
             placeholder="e.g. 200"
@@ -156,7 +170,68 @@ export default function PlanWizard() {
         </div>
       </div>
 
-      {/* CTA button */}
+      {/* ── Event Date + Time ─────────────────────────────────────────── */}
+      <div className="mb-4 sm:mb-5 border-t border-white/10 pt-4">
+        <p className="text-[10px] sm:text-xs font-bold text-white/50 uppercase tracking-widest mb-2.5">
+          📅 Event Date &amp; Time <span className="normal-case font-normal text-white/30 ml-1">— checks vendor availability</span>
+        </p>
+        <div className="flex flex-wrap gap-3 items-start">
+
+          {/* Date picker */}
+          <div className="flex-1 min-w-[140px]">
+            <input
+              type="date"
+              value={form.eventDate}
+              min={today}
+              onChange={(e) => setForm({ ...form, eventDate: e.target.value })}
+              className={`w-full bg-white/10 border rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-red-400/50 min-h-[44px] transition-colors ${
+                form.eventDate
+                  ? 'border-red-400/60 text-white'
+                  : 'border-white/20 text-white/50'
+              }`}
+            />
+            {form.eventDate && (
+              <button
+                type="button"
+                onClick={() => setForm({ ...form, eventDate: '', eventTime: '' })}
+                className="mt-1 text-[10px] text-white/40 hover:text-white/70 font-semibold"
+              >
+                Clear date ×
+              </button>
+            )}
+          </div>
+
+          {/* Time slots — shown only when date is set */}
+          {form.eventDate && (
+            <div className="flex flex-wrap gap-1.5">
+              {TIME_SLOTS.map((slot) => (
+                <button
+                  key={slot.value}
+                  type="button"
+                  onClick={() => setForm({ ...form, eventTime: slot.value === form.eventTime ? '' : slot.value })}
+                  className={`flex items-center gap-1 px-2.5 py-2 rounded-full text-xs font-semibold border transition-all active:scale-95 ${
+                    form.eventTime === slot.value
+                      ? 'bg-red-600 border-red-500 text-white shadow-md shadow-red-600/30'
+                      : 'bg-white/10 border-white/20 text-white/70 hover:border-white/40'
+                  }`}
+                >
+                  <span>{slot.icon}</span>
+                  <span>{slot.label}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Availability hint */}
+        {form.eventDate && (
+          <p className="mt-2 text-[10px] text-emerald-400/80 font-semibold">
+            ✓ Only vendors available on {new Date(form.eventDate + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })} will be shown
+          </p>
+        )}
+      </div>
+
+      {/* CTA */}
       <button
         type="submit"
         disabled={!ready}

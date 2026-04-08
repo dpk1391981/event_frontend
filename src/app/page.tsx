@@ -1,5 +1,4 @@
 import type { Metadata } from 'next';
-import Link from 'next/link';
 import TopVendorCarousel from '@/components/home/TopVendorCarousel';
 import HeroTicker from '@/components/home/HeroTicker';
 import CategorySection from '@/components/home/CategorySection';
@@ -7,6 +6,7 @@ import CTABanners from '@/components/home/CTABanners';
 import SEOContentBlock from '@/components/home/SEOContentBlock';
 import PlanWizard from '@/components/home/PlanWizard';
 import FeaturedPackages from '@/components/home/FeaturedPackages';
+import CityRedirect from '@/components/home/CityRedirect';
 import { StoreIcon, CalendarIcon, StarIcon, CheckCircleIcon, ClipboardIcon, RobotIcon } from '@/components/ui/Icon';
 
 export const metadata: Metadata = {
@@ -54,6 +54,7 @@ const HOW_IT_WORKS = [
 export default function HomePage() {
   return (
     <main className="min-h-screen bg-gray-50 overflow-x-hidden">
+      <CityRedirect />
 
       {/* ── HERO ─────────────────────────────────────────────────────── */}
       <section className="relative -mt-16 pt-16 min-h-[100svh] sm:min-h-[94vh] flex flex-col bg-gradient-to-br from-gray-950 via-red-950 to-gray-900 text-white overflow-hidden">
@@ -88,13 +89,6 @@ export default function HomePage() {
           <div className="w-full max-w-2xl mb-5">
             <PlanWizard />
           </div>
-
-          <p className="text-gray-400 text-sm">
-            Just browsing?{' '}
-            <Link href="/search" className="text-white font-semibold underline underline-offset-2">
-              Search vendors →
-            </Link>
-          </p>
         </div>
 
         {/* Stats bar — 2 cols on mobile, 4 on desktop */}

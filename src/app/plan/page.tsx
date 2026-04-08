@@ -4,10 +4,11 @@ import { Suspense, useState, useEffect, useCallback, useRef, useMemo } from 'rea
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
-import { searchApi, locationsApi, categoriesApi } from '@/lib/api';
-import { City, Category, EventPlan, Vendor } from '@/types';
+import { searchApi, locationsApi, categoriesApi, packagesApi } from '@/lib/api';
+import { City, Category, EventPlan, Vendor, VendorPackage } from '@/types';
 import { CATEGORY_TO_SEO } from '@/lib/seo-urls';
 import LeadModal from '@/components/lead/LeadModal';
+import PackageCard from '@/components/packages/PackageCard';
 
 // ─── UI-only constants (visual/text, not data) ────────────────────────────────
 
@@ -101,7 +102,7 @@ const budgetFits = (v: Vendor, alloc: number) =>
  * Uses backend-pre-computed score when available to stay in sync with server logic.
  */
 function matchScore(v: Vendor, alloc: number): number {
-  if (typeof v.matchScore === 'number') return v.matchScore;
+  if (typeof v.matchScore === 'number') return Math.round(v.matchScore);
   const min = Number(v.minPrice) || 0;
   const max = Number(v.maxPrice) || 0;
   let bf = 50;
@@ -180,7 +181,7 @@ function PlanHero({
 }: {
   plan: EventPlan;
   cityName?: string;
-  form: { eventType: string; budget: string; guestCount: string };
+  form: { eventType: string; budget: string; guestCount: string; eventDate?: string };
   catMap: Map<string, Category>;
   onEdit: () => void;
 }) {
@@ -243,6 +244,7 @@ function PlanHero({
             <div className="flex flex-wrap gap-2 mt-2">
               <span className={`text-sm font-bold ${theme.accentText}`}>{fmtFull(plan.totalBudget)}</span>
               {plan.guestCount && <span className="text-sm text-white/60">· {plan.guestCount} guests</span>}
+              {form.eventDate && <span className="text-sm text-emerald-300 font-bold">· 📅 {new Date(form.eventDate + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</span>}
               <span className="text-sm text-white/60">· {cats.length} categories</span>
             </div>
           </div>
@@ -322,8 +324,8 @@ function SmartSummary({ plan, cityName, catMap }: { plan: EventPlan; cityName?: 
     .join(', ');
 
   // Prefer server-computed confidence score; fall back to client average
-  const confidenceScore = plan.summary?.confidenceScore
-    ?? Math.round(cats.flatMap(c => c.vendors.map(v => matchScore(v, c.allocatedBudget))).reduce((s, x, _, a) => s + x / a.length, 0));
+  const confidenceScore = Math.round(plan.summary?.confidenceScore
+    ?? cats.flatMap(c => c.vendors.map(v => matchScore(v, c.allocatedBudget))).reduce((s, x, _, a) => s + x / a.length, 0));
 
   // Prefer server-computed estimated total
   const estimatedTotal = plan.summary?.estimatedTotal ?? 0;
@@ -560,7 +562,7 @@ function BudgetBreakdown({ plan, catMap }: { plan: EventPlan; catMap: Map<string
                 <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
                   <div className={`h-full rounded-full transition-all ${m.bar}`} style={{ width: `${item.budgetAllocation}%` }} />
                 </div>
-                <span className={`text-[10px] font-extrabold w-7 text-right ${m.color}`}>{item.budgetAllocation}%</span>
+                <span className={`text-[10px] font-extrabold w-7 text-right ${m.color}`}>{Math.round(item.budgetAllocation)}%</span>
               </div>
             </div>
           );
@@ -739,7 +741,7 @@ function CategorySection({
           <div>
             <h3 className="font-extrabold text-gray-900 text-sm">{m.name}</h3>
             <p className="text-xs text-gray-500">
-              {item.vendors.length} match{item.vendors.length !== 1 ? 'es' : ''} · {item.budgetAllocation}% of budget
+              {item.vendors.length} match{item.vendors.length !== 1 ? 'es' : ''} · {Math.round(item.budgetAllocation)}% of budget
               {shortlistedCount > 0 && <span className="ml-2 text-red-600 font-bold">· {shortlistedCount} shortlisted</span>}
             </p>
           </div>
@@ -944,7 +946,7 @@ function EditPlanForm({
 }: {
   cities: City[];
   eventCategories: Category[];
-  form: { eventType: string; cityId: string; budget: string; guestCount: string };
+  form: { eventType: string; cityId: string; budget: string; guestCount: string; eventDate: string; eventTime: string };
   setForm: (f: typeof form) => void;
   onSubmit: () => void;
   onCancel: () => void;
@@ -1029,7 +1031,7 @@ function PlanForm({
 }: {
   cities: City[];
   eventCategories: Category[];
-  form: { eventType: string; cityId: string; budget: string; guestCount: string };
+  form: { eventType: string; cityId: string; budget: string; guestCount: string; eventDate: string; eventTime: string };
   setForm: (f: typeof form) => void;
   loading: boolean;
   onSubmit: (e: React.FormEvent) => void;
@@ -1125,8 +1127,10 @@ function PlanPageInner() {
   // UI state
   const [step, setStep]             = useState(1);
   const [selectedVendor, setSelectedVendor] = useState<Vendor | null>(null);
+  const [selectedPackage, setSelectedPackage] = useState<VendorPackage | null>(null);
   const [bulkVendors, setBulkVendors]       = useState<Vendor[] | null>(null);
   const [shortlist, setShortlist]           = useState<Vendor[]>([]);
+  const [planPackages, setPlanPackages]     = useState<VendorPackage[]>([]);
   const resultsRef = useRef<HTMLDivElement>(null);
 
   const [form, setForm] = useState({
@@ -1134,6 +1138,8 @@ function PlanPageInner() {
     cityId:     searchParams.get('cityId')     || '',
     budget:     searchParams.get('budget')     || '',
     guestCount: searchParams.get('guestCount') || '',
+    eventDate:  searchParams.get('eventDate')  || '',
+    eventTime:  searchParams.get('eventTime')  || '',
   });
 
   // Build a slug→Category map for icon/name lookups (covers both event & service cats)
@@ -1185,6 +1191,17 @@ function PlanPageInner() {
       setStep(2);
       setEditing(false);
       setTimeout(() => resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
+
+      // Fetch top packages matching budget + city (availability-filtered when date set)
+      packagesApi.search({
+        cityId: Number(f.cityId) || undefined,
+        maxBudget: Number(f.budget) || undefined,
+        eventDate: f.eventDate || undefined,
+        limit: 6,
+      }).then((res: unknown) => {
+        const r = res as { data: VendorPackage[] };
+        setPlanPackages(Array.isArray(r.data) ? r.data : []);
+      }).catch(() => {});
     } catch {
       alert('Failed to generate plan. Please try again.');
     } finally {
@@ -1290,6 +1307,38 @@ function PlanPageInner() {
           {/* C2. Budget insight */}
           <BudgetInsightCard budget={Number(form.budget)} eventType={form.eventType} cityName={cityName} />
 
+          {/* C3. Ready-made packages matching this budget */}
+          {planPackages.length > 0 && (
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+              <div className="px-5 py-4 bg-gradient-to-r from-red-50 to-rose-50 border-b border-red-100 flex items-center justify-between">
+                <div>
+                  <p className="text-[10px] font-extrabold uppercase tracking-widest text-red-600 mb-1">📦 Ready-made Packages</p>
+                  <p className="font-extrabold text-gray-900 text-sm">Packages that fit your budget — pick one &amp; go</p>
+                  <p className="text-xs text-gray-500 mt-0.5">Fixed pricing, no negotiation. Book directly.</p>
+                </div>
+                <Link
+                  href={`/search?q=packages&nlp=1&maxBudget=${form.budget}&cityId=${form.cityId}`}
+                  className="hidden sm:inline-flex text-xs font-extrabold text-red-600 bg-white border border-red-200 px-3 py-2 rounded-xl hover:bg-red-50 transition whitespace-nowrap"
+                >
+                  View all →
+                </Link>
+              </div>
+              <div className="p-4 grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {planPackages.slice(0, 6).map((pkg) => (
+                  <PackageCard
+                    key={pkg.id}
+                    pkg={pkg}
+                    compact
+                    onBook={(p) => {
+                      setSelectedPackage(p);
+                      setSelectedVendor(p.vendor as any);
+                    }}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* D. Recommended Package */}
           <RecommendedPackage
             plan={plan}
@@ -1360,8 +1409,9 @@ function PlanPageInner() {
       {selectedVendor && (
         <LeadModal
           vendor={selectedVendor}
-          onClose={() => { setSelectedVendor(null); setBulkVendors(null); }}
+          onClose={() => { setSelectedVendor(null); setBulkVendors(null); setSelectedPackage(null); }}
           budget={Number(form.budget)}
+          selectedPackage={selectedPackage ?? undefined}
         />
       )}
     </div>

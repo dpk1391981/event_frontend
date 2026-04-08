@@ -195,6 +195,10 @@ export const packagesApi = {
   update:        (id: number, data: unknown) => api.patch(`/packages/${id}`, data),
   remove:        (id: number) => api.delete(`/packages/${id}`),
   boost:         (id: number) => api.post(`/packages/${id}/boost`),
+  setFeatured:   (id: number, featured: boolean) =>
+    featured
+      ? api.post(`/packages/${id}/feature`, { featured: true })
+      : api.delete(`/packages/${id}/feature`),
 };
 
 // ─── Vendor Services (JWT required) ──────────────────────────────────────────

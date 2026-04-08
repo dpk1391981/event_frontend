@@ -5,7 +5,7 @@ import {
   ArrowDownRight, ArrowUpRight, Bell, BriefcaseBusiness,
   Check, ChevronRight, CircleDollarSign, Clock3, Coins,
   CreditCard, Gem, LayoutDashboard, MapPin, Menu,
-  MessageSquare, Package2, Phone, Plus, Search, Settings,
+  MessageSquare, Package, Package2, Phone, Plus, Search, Settings,
   ShieldCheck, Sparkles, Star, TrendingUp, Wallet, X,
   Zap, ToggleLeft, ToggleRight, Trophy, LogOut, CalendarDays,
 } from 'lucide-react';
@@ -16,6 +16,7 @@ import {
   createPackage as apiCreatePackage,
   updatePackage as apiUpdatePackage,
   boostPackage as apiBoostPackage,
+  setPackageFeatured as apiSetPackageFeatured,
   createService as apiCreateService,
   updateService as apiUpdateService,
   deleteService as apiDeleteService,
@@ -109,11 +110,12 @@ export default function MyPanelShell({ data }: { data: VendorPanelData }) {
 
   // ── Package actions ──
   const addPackage = async (payload: {
-    title: string; category?: string; price: number; priceType: 'fixed' | 'per_person';
-    description?: string; locations?: string[];
+    title: string; categoryId?: number; price: number; priceType: 'fixed' | 'per_person';
+    description?: string; serviceIds?: number[]; tag?: string; minGuests?: number; maxGuests?: number;
+    cityId?: number; localityIds?: number[];
   }) => {
     const created = await apiCreatePackage({ ...payload, status: 'active' } as any) as unknown as PackageItem;
-    setPackages((cur) => [...cur, created]);
+    setPackages((cur) => [...cur, { ...created, serviceIds: created.serviceIds ?? payload.serviceIds ?? [] }]);
   };
 
   const togglePackageStatus = (id: number) => {
@@ -129,6 +131,13 @@ export default function MyPanelShell({ data }: { data: VendorPanelData }) {
     const next = !pkg.boosted;
     setPackages((cur) => cur.map((p) => p.id === id ? { ...p, boosted: next } : p));
     if (next) apiBoostPackage(id).catch(() => setPackages((cur) => cur.map((p) => p.id === id ? { ...p, boosted: false } : p)));
+  };
+  const togglePackageFeatured = (id: number) => {
+    const pkg = packages.find((p) => p.id === id);
+    if (!pkg) return;
+    const next = !pkg.featured;
+    setPackages((cur) => cur.map((p) => p.id === id ? { ...p, featured: next } : p));
+    apiSetPackageFeatured(id, next).catch(() => setPackages((cur) => cur.map((p) => p.id === id ? { ...p, featured: !next } : p)));
   };
 
   // ── Service actions ──
@@ -366,12 +375,14 @@ export default function MyPanelShell({ data }: { data: VendorPanelData }) {
             {activeSection === 'packages' && (
               <PackagesSection
                 packages={packages}
+                services={services}
                 cities={data.cities}
                 serviceCategories={data.serviceCategories}
                 onSave={addPackage}
                 onToggleStatus={togglePackageStatus}
                 onToggleBoost={togglePackageBoost}
-                onViewLeads={(pkgId) => { setSection('leads'); }}
+                onToggleFeatured={togglePackageFeatured}
+                onViewLeads={(_pkgId) => { setSection('leads'); }}
               />
             )}
             {activeSection === 'wallet' && (
@@ -686,11 +697,13 @@ function ServicesSection({
   services, categories, onAdd, onToggleStatus, onRemove,
 }: {
   services: VendorServiceItem[];
-  categories: string[];
+  categories: Array<{ id: number; name: string }> | string[];
   onAdd: (d: Omit<VendorServiceItem, 'id' | 'vendorId' | 'createdAt' | 'sortOrder'>) => Promise<void>;
   onToggleStatus: (id: number) => void;
   onRemove: (id: number) => void;
 }) {
+  // Normalise to string[] for the DarkSelect inside
+  const categoryNames: string[] = categories.map((c) => typeof c === 'string' ? c : c.name);
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
@@ -737,7 +750,7 @@ function ServicesSection({
           <p className="text-base font-bold text-white mb-4">New Service</p>
           <div className="grid gap-4 sm:grid-cols-2">
             <DarkField label="Title *" placeholder="e.g. Wedding Photography Full Day" value={form.title} onChange={(v) => setForm((f) => ({ ...f, title: v }))} />
-            <DarkSelect label="Category" value={form.categoryName} onChange={(v) => setForm((f) => ({ ...f, categoryName: v }))} options={categories} placeholder="Select category" />
+            <DarkSelect label="Category" value={form.categoryName} onChange={(v) => setForm((f) => ({ ...f, categoryName: v }))} options={categoryNames} placeholder="Select category" />
             <DarkField label="Min Price (₹)" placeholder="50000" value={form.minPrice} onChange={(v) => setForm((f) => ({ ...f, minPrice: v }))} />
             <DarkField label="Max Price (₹)" placeholder="200000" value={form.maxPrice} onChange={(v) => setForm((f) => ({ ...f, maxPrice: v }))} />
             <DarkField label="Price Unit" placeholder="per event / per hour" value={form.priceUnit} onChange={(v) => setForm((f) => ({ ...f, priceUnit: v }))} />
@@ -824,33 +837,58 @@ function ServicesSection({
 
 // ─── Packages ─────────────────────────────────────────────────────────────────
 
+// TAG config
+const TAG_CONFIG = {
+  budget:   { label: 'Budget',   color: 'text-blue-400   border-blue-500/30   bg-blue-500/10'   },
+  standard: { label: 'Standard', color: 'text-gray-300   border-gray-600      bg-gray-800'      },
+  premium:  { label: 'Premium',  color: 'text-purple-400 border-purple-500/30 bg-purple-500/10' },
+  luxury:   { label: 'Luxury',   color: 'text-amber-400  border-amber-500/30  bg-amber-500/10'  },
+} as const;
+
 function PackagesSection({
-  packages, cities: initialCities, serviceCategories, onSave, onToggleStatus, onToggleBoost, onViewLeads,
+  packages, services, cities: initialCities, serviceCategories, onSave,
+  onToggleStatus, onToggleBoost, onToggleFeatured, onViewLeads,
 }: {
   packages: PackageItem[];
+  services: VendorServiceItem[];
   cities: Array<{ id: number; name: string }>;
-  serviceCategories: string[];
-  onSave: (data: { title: string; category?: string; price: number; priceType: 'fixed' | 'per_person'; description?: string; locations?: string[] }) => Promise<void>;
+  serviceCategories: Array<{ id: number; name: string }>;
+  onSave: (data: {
+    title: string; categoryId?: number; price: number; priceType: 'fixed' | 'per_person';
+    description?: string; serviceIds?: number[]; tag?: string; minGuests?: number; maxGuests?: number;
+    cityId?: number; localityIds?: number[];
+  }) => Promise<void>;
   onToggleStatus: (id: number) => void;
   onToggleBoost: (id: number) => void;
+  onToggleFeatured: (id: number) => void;
   onViewLeads: (id: number) => void;
 }) {
+  const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({
-    name: '', category: '', price: '', description: '',
+    name: '', categoryId: '', price: '', description: '',
+    minGuests: '', maxGuests: '',
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [priceType, setPriceType] = useState<'fixed' | 'per_person'>('fixed');
-  const [locationInput, setLocationInput] = useState('');
-  const [locations, setLocations] = useState<string[]>([]);
+  const [selectedServiceIds, setSelectedServiceIds] = useState<number[]>([]);
   const [cities, setCities] = useState(initialCities);
   const [cityId, setCityId] = useState(initialCities[0]?.id ?? 0);
   const [localities, setLocalities] = useState<Array<{ id: number; name: string }>>([]);
   const [localityId, setLocalityId] = useState(0);
+  const [addedLocalities, setAddedLocalities] = useState<Array<{ id: number; label: string }>>([]);
   const [loadingLocalities, setLoadingLocalities] = useState(false);
 
-  // Load cities once if not pre-loaded
+  // Computed savings from selected services
+  const activeServices = services.filter((s) => s.status === 'active');
+  const selectedServices = activeServices.filter((s) => selectedServiceIds.includes(s.id));
+  const totalIndividualPrice = selectedServices.reduce((sum, s) => sum + Number(s.minPrice ?? 0), 0);
+  const bundlePrice = Number(form.price) || 0;
+  const savings = totalIndividualPrice > 0 && bundlePrice > 0 && bundlePrice < totalIndividualPrice
+    ? Math.round(((totalIndividualPrice - bundlePrice) / totalIndividualPrice) * 100)
+    : 0;
+
   useEffect(() => {
     if (cities.length === 0) {
       locationsApi.getCities()
@@ -859,7 +897,6 @@ function PackagesSection({
     }
   }, [cities.length]);
 
-  // Load localities whenever city changes
   useEffect(() => {
     if (!cityId) return;
     setLoadingLocalities(true);
@@ -871,37 +908,56 @@ function PackagesSection({
       .finally(() => setLoadingLocalities(false));
   }, [cityId]);
 
+  const toggleService = (id: number) => {
+    setSelectedServiceIds((cur) =>
+      cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id],
+    );
+  };
+
   const addLoc = () => {
+    if (!cityId) return;
     const cityName = cities.find((c) => c.id === cityId)?.name ?? '';
-    const localityName = localities.find((l) => l.id === localityId)?.name ?? locationInput.trim();
-    const label = localityName ? `${localityName}, ${cityName}` : cityName;
-    if (label && !locations.includes(label)) { setLocations((l) => [...l, label]); }
+    const locality = localities.find((l) => l.id === localityId);
+    const label = locality ? `${locality.name}, ${cityName}` : cityName;
+    const alreadyAdded = addedLocalities.some((l) => l.id === localityId && localityId !== 0);
+    if (!alreadyAdded) setAddedLocalities((prev) => [...prev, { id: localityId, label }]);
+  };
+
+  const resetForm = () => {
+    setForm({ name: '', categoryId: '', price: '', description: '', minGuests: '', maxGuests: '' });
+    setSelectedServiceIds([]);
+    setAddedLocalities([]);
+    setErrors({});
+    setPriceType('fixed');
   };
 
   const handleSave = async () => {
     const errs: Record<string, string> = {};
-    if (!form.name.trim())    errs.name     = 'Package name is required';
-    if (!form.category)       errs.category = 'Please select a category';
-    if (!form.price.trim())   errs.price    = 'Price is required';
-    else if (isNaN(Number(form.price)) || Number(form.price) <= 0) errs.price = 'Enter a valid price';
+    if (!form.name.trim()) errs.name = 'Package name is required';
+    if (!form.price.trim() || isNaN(Number(form.price)) || Number(form.price) <= 0) errs.price = 'Enter a valid price';
+    if (selectedServiceIds.length < 1) errs.services = 'Select at least 1 service to bundle';
     setErrors(errs);
     if (Object.keys(errs).length > 0) return;
+
+    const localityIds = addedLocalities.filter((l) => l.id > 0).map((l) => l.id);
 
     setSaving(true);
     try {
       await onSave({
         title: form.name.trim(),
-        category: form.category || undefined,
+        categoryId: form.categoryId ? Number(form.categoryId) : undefined,
         price: Number(form.price),
         priceType,
         description: form.description.trim() || undefined,
-        locations,
+        serviceIds: selectedServiceIds,
+        minGuests: form.minGuests ? Number(form.minGuests) : undefined,
+        maxGuests: form.maxGuests ? Number(form.maxGuests) : undefined,
+        cityId: cityId || undefined,
+        localityIds: localityIds.length > 0 ? localityIds : undefined,
       });
       setSaved(true);
-      setForm({ name: '', category: '', price: '', description: '' });
-      setLocations([]);
-      setErrors({});
-      setTimeout(() => setSaved(false), 3000);
+      resetForm();
+      setTimeout(() => { setSaved(false); setShowForm(false); }, 2500);
     } catch {
       setErrors((e) => ({ ...e, _: 'Failed to save. Please try again.' }));
     } finally {
@@ -911,14 +967,24 @@ function PackagesSection({
 
   return (
     <div className="space-y-4">
-      <SectionHeader eyebrow="Packages" title="Pricing Packages" />
+      <div className="flex items-center justify-between">
+        <SectionHeader eyebrow="Packages" title="Service Bundles" />
+        <button
+          type="button"
+          onClick={() => { setShowForm((v) => !v); resetForm(); }}
+          className="flex items-center gap-1.5 rounded-xl bg-red-600 px-4 py-2 text-xs font-bold text-white hover:bg-red-500 transition-all"
+        >
+          <Plus className="h-3.5 w-3.5" />
+          {showForm ? 'Cancel' : 'New Bundle'}
+        </button>
+      </div>
 
-      {/* Info chips */}
+      {/* Insight chips */}
       <div className="grid gap-3 sm:grid-cols-3">
         {[
-          { icon: <Zap className="h-4 w-4 text-red-400" />,     text: 'Packages get 3× more leads',      bg: 'border-red-500/30 bg-red-500/10' },
-          { icon: <TrendingUp className="h-4 w-4 text-amber-400" />, text: 'Add price → better AI matching', bg: 'border-amber-500/30 bg-amber-500/10' },
-          { icon: <MapPin className="h-4 w-4 text-emerald-400" />,  text: '3+ locations → 50% more reach',  bg: 'border-emerald-500/30 bg-emerald-500/10' },
+          { icon: <Zap className="h-4 w-4 text-red-400" />,     text: 'Bundles get 3× more leads than standalone services', bg: 'border-red-500/30 bg-red-500/10' },
+          { icon: <TrendingUp className="h-4 w-4 text-amber-400" />, text: 'Bundle discount boosts ranking in AI search', bg: 'border-amber-500/30 bg-amber-500/10' },
+          { icon: <Star className="h-4 w-4 text-purple-400" />,  text: 'Premium & luxury bundles convert 2× better', bg: 'border-purple-500/30 bg-purple-500/10' },
         ].map((c, i) => (
           <div key={i} className={`flex items-center gap-3 rounded-xl border px-4 py-3 ${c.bg}`}>
             {c.icon}
@@ -927,16 +993,102 @@ function PackagesSection({
         ))}
       </div>
 
-      <div className="grid gap-5 xl:grid-cols-[360px_1fr]">
-        {/* Create form */}
-        <div className="rounded-xl border border-gray-800 bg-gray-900 p-5">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-red-500 mb-1">Create Package</p>
-          <p className="text-lg font-bold text-white mb-4">New Package</p>
+      {/* Create bundle form */}
+      {showForm && (
+        <div className="rounded-xl border border-red-600/30 bg-gray-900 p-5">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-red-500 mb-1">New Bundle</p>
+          <p className="text-lg font-bold text-white mb-4">Select services + set bundle price</p>
+
+          {/* Step 1 — pick services */}
+          <div className="mb-5">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">
+                Step 1 — Select Services to Bundle *
+              </p>
+              {selectedServiceIds.length > 0 && (
+                <span className="text-[10px] font-bold text-emerald-400">
+                  {selectedServiceIds.length} selected · Individual total: {fmtPrice(totalIndividualPrice)}
+                </span>
+              )}
+            </div>
+            {errors.services && <p className="text-[11px] text-red-400 mb-2">{errors.services}</p>}
+            {activeServices.length === 0 ? (
+              <div className="rounded-lg border border-dashed border-gray-700 px-4 py-5 text-center">
+                <p className="text-xs text-gray-500">No active services found.</p>
+                <p className="text-[11px] text-gray-600 mt-1">Go to Services tab to add your offerings first.</p>
+              </div>
+            ) : (
+              <div className="grid gap-2 sm:grid-cols-2">
+                {activeServices.map((svc) => {
+                  const checked = selectedServiceIds.includes(svc.id);
+                  return (
+                    <button
+                      key={svc.id}
+                      type="button"
+                      onClick={() => toggleService(svc.id)}
+                      className={`flex items-start gap-3 rounded-xl border p-3 text-left transition-all ${
+                        checked
+                          ? 'border-red-600/50 bg-red-600/10'
+                          : 'border-gray-700 bg-gray-800 hover:border-gray-600'
+                      }`}
+                    >
+                      <div className={`mt-0.5 h-4 w-4 rounded-full border-2 flex items-center justify-center shrink-0 ${
+                        checked ? 'border-red-500 bg-red-500' : 'border-gray-600'
+                      }`}>
+                        {checked && <Check className="h-2.5 w-2.5 text-white" />}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-xs font-semibold text-white leading-tight">{svc.title}</p>
+                        {svc.categoryName && <p className="text-[10px] text-red-400 mt-0.5">{svc.categoryName}</p>}
+                        {(svc.minPrice || svc.maxPrice) && (
+                          <p className="text-[10px] text-gray-400 mt-0.5">
+                            {svc.minPrice ? fmtPrice(svc.minPrice) : ''}
+                            {svc.minPrice && svc.maxPrice ? ' – ' : ''}
+                            {svc.maxPrice ? fmtPrice(svc.maxPrice) : ''}
+                            {svc.priceUnit ? ` / ${svc.priceUnit}` : ''}
+                          </p>
+                        )}
+                        {svc.duration && <p className="text-[10px] text-gray-500">{svc.duration}</p>}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Step 2 — bundle details */}
           <div className="space-y-3">
-            <DarkField label="Package Name *" placeholder="e.g. Wedding Photography ₹2L" value={form.name} onChange={(v) => { setForm((f) => ({ ...f, name: v })); setErrors((e) => ({ ...e, name: '' })); }} error={errors.name} />
-            <DarkSelect label="Category *" value={form.category} onChange={(v) => { setForm((f) => ({ ...f, category: v })); setErrors((e) => ({ ...e, category: '' })); }} options={serviceCategories} placeholder="Select category" error={errors.category} />
+            <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Step 2 — Bundle Details</p>
+            <DarkField
+              label="Bundle Name *"
+              placeholder="e.g. Complete Wedding Photography Package"
+              value={form.name}
+              onChange={(v) => { setForm((f) => ({ ...f, name: v })); setErrors((e) => ({ ...e, name: '' })); }}
+              error={errors.name}
+            />
+            <DarkSelect
+              label="Category"
+              value={form.categoryId}
+              onChange={(v) => setForm((f) => ({ ...f, categoryId: v }))}
+              options={serviceCategories.map((c) => ({ value: String(c.id), label: c.name }))}
+              placeholder="Select category (optional)"
+            />
             <div className="grid grid-cols-2 gap-3">
-              <DarkField label="Price (₹) *" placeholder="200000" value={form.price} onChange={(v) => { setForm((f) => ({ ...f, price: v })); setErrors((e) => ({ ...e, price: '' })); }} error={errors.price} />
+              <div>
+                <DarkField
+                  label="Bundle Price (₹) *"
+                  placeholder="150000"
+                  value={form.price}
+                  onChange={(v) => { setForm((f) => ({ ...f, price: v })); setErrors((e) => ({ ...e, price: '' })); }}
+                  error={errors.price}
+                />
+                {savings > 0 && (
+                  <p className="text-[10px] text-emerald-400 mt-1 font-semibold">
+                    ✓ {savings}% savings vs individual ({fmtPrice(totalIndividualPrice)})
+                  </p>
+                )}
+              </div>
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-2">Price Type</p>
                 <div className="flex gap-2">
@@ -951,9 +1103,21 @@ function PackagesSection({
                 </div>
               </div>
             </div>
-            <DarkField label="Description" placeholder="Why this package converts…" value={form.description} onChange={(v) => setForm((f) => ({ ...f, description: v }))} multiline  />
+            <div className="grid grid-cols-2 gap-3">
+              <DarkField label="Min Guests" placeholder="50" value={form.minGuests} onChange={(v) => setForm((f) => ({ ...f, minGuests: v }))} />
+              <DarkField label="Max Guests" placeholder="500" value={form.maxGuests} onChange={(v) => setForm((f) => ({ ...f, maxGuests: v }))} />
+            </div>
+            <DarkField
+              label="Description"
+              placeholder="Why this bundle is the best value…"
+              value={form.description}
+              onChange={(v) => setForm((f) => ({ ...f, description: v }))}
+              multiline
+            />
+
+            {/* Location */}
             <div>
-              <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-2">Service Locations</p>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-2">Service Location</p>
               <div className="grid grid-cols-2 gap-2 mb-2">
                 <div>
                   <p className="text-[9px] font-semibold text-gray-600 mb-1">City</p>
@@ -972,9 +1136,7 @@ function PackagesSection({
                       {localities.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
                     </select>
                   ) : (
-                    <input value={locationInput} onChange={(e) => setLocationInput(e.target.value)}
-                      placeholder="Type locality"
-                      className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-xs text-gray-300 outline-none placeholder:text-gray-600 focus:border-red-600/50" />
+                    <div className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-xs text-gray-600">No localities</div>
                   )}
                 </div>
               </div>
@@ -982,12 +1144,12 @@ function PackagesSection({
                 className="flex items-center gap-1.5 rounded-lg border border-red-600/40 bg-red-600/10 px-3 py-1.5 text-xs font-semibold text-red-400 hover:bg-red-600/20 transition-all">
                 <Plus className="h-3.5 w-3.5" /> Add Location
               </button>
-              {locations.length > 0 && (
+              {addedLocalities.length > 0 && (
                 <div className="mt-2 flex flex-wrap gap-1.5">
-                  {locations.map((l) => (
-                    <span key={l} className="inline-flex items-center gap-1 rounded-full border border-gray-700 bg-gray-800 px-2.5 py-1 text-xs text-gray-400">
-                      <MapPin className="h-3 w-3" />{l}
-                      <button type="button" onClick={() => setLocations((ls) => ls.filter((x) => x !== l))}>
+                  {addedLocalities.map((l) => (
+                    <span key={l.id} className="inline-flex items-center gap-1 rounded-full border border-gray-700 bg-gray-800 px-2.5 py-1 text-xs text-gray-400">
+                      <MapPin className="h-3 w-3" />{l.label}
+                      <button type="button" onClick={() => setAddedLocalities((ls) => ls.filter((x) => x.id !== l.id))}>
                         <X className="h-3 w-3 ml-0.5 hover:text-red-400" />
                       </button>
                     </span>
@@ -996,86 +1158,141 @@ function PackagesSection({
               )}
             </div>
           </div>
+
           {errors._ && (
-            <p className="mt-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-400">{errors._}</p>
+            <p className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-400">{errors._}</p>
           )}
           {saved && (
-            <p className="mt-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-400 flex items-center gap-2">
-              <Check className="h-3.5 w-3.5" /> Package saved successfully!
+            <p className="mt-3 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-400 flex items-center gap-2">
+              <Check className="h-3.5 w-3.5" /> Bundle saved! Customers can now discover it.
             </p>
           )}
           <button type="button" onClick={handleSave} disabled={saving}
-            className="mt-3 w-full flex items-center justify-center gap-2 rounded-xl bg-red-600 py-3 text-sm font-bold text-white hover:bg-red-500 disabled:opacity-60 transition-all">
-            {saving ? <><span className="h-4 w-4 rounded-full border-2 border-white/30 border-t-white animate-spin" /> Saving…</> : <><Plus className="h-4 w-4" /> Save Package</>}
+            className="mt-4 w-full flex items-center justify-center gap-2 rounded-xl bg-red-600 py-3 text-sm font-bold text-white hover:bg-red-500 disabled:opacity-60 transition-all">
+            {saving
+              ? <><span className="h-4 w-4 rounded-full border-2 border-white/30 border-t-white animate-spin" /> Saving…</>
+              : <><Package className="h-4 w-4" /> Publish Bundle</>
+            }
           </button>
         </div>
+      )}
 
-        {/* Package list */}
-        <div className="grid gap-4 sm:grid-cols-2 content-start">
-          {packages.length === 0 ? (
-            <EmptyState title="No packages yet" body="Create a package to get 3× more leads than generic listings." />
-          ) : packages.map((pkg) => (
-            <div key={pkg.id} className={`rounded-xl border p-5 ${
-              pkg.boosted ? 'border-amber-500/40 bg-amber-500/5' :
-              pkg.status === 'active' ? 'border-gray-700 bg-gray-900' :
-              'border-gray-800 bg-gray-900/50 opacity-60'
-            }`}>
-              <div className="flex items-start justify-between gap-2 mb-2">
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-1.5 mb-1">
-                    {pkg.category && <p className="text-[10px] font-bold uppercase tracking-widest text-red-500">{pkg.category}</p>}
-                    {pkg.boosted && <span className="inline-flex items-center gap-1 rounded-full bg-amber-500 px-2 py-0.5 text-[9px] font-bold text-gray-900"><Zap className="h-2.5 w-2.5" />BOOSTED</span>}
-                    {pkg.featured && <span className="inline-flex items-center gap-1 rounded-full bg-red-600 px-2 py-0.5 text-[9px] font-bold text-white"><Star className="h-2.5 w-2.5" />FEATURED</span>}
+      {/* Bundle list */}
+      {packages.length === 0 ? (
+        <EmptyState
+          title="No bundles yet"
+          body="Bundle 2+ services together with a discount. Customers prefer bundles — they convert 3× better than individual listings."
+        />
+      ) : (
+        <div className="grid gap-4 sm:grid-cols-2">
+          {packages.map((pkg) => {
+            const tagCfg = pkg.tag ? TAG_CONFIG[pkg.tag] : null;
+            const bundledServices = services.filter((s) => (pkg.serviceIds ?? []).includes(s.id));
+            return (
+              <div key={pkg.id} className={`rounded-xl border p-5 ${
+                pkg.boosted ? 'border-amber-500/40 bg-amber-500/5' :
+                pkg.status === 'active' ? 'border-gray-700 bg-gray-900' :
+                'border-gray-800 bg-gray-900/50 opacity-60'
+              }`}>
+                {/* Header */}
+                <div className="flex items-start justify-between gap-2 mb-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-1.5 mb-1">
+                      {pkg.category && <p className="text-[10px] font-bold uppercase tracking-widest text-red-500">{pkg.category}</p>}
+                      {tagCfg && (
+                        <span className={`rounded-full border px-2 py-0.5 text-[9px] font-bold ${tagCfg.color}`}>
+                          {tagCfg.label}
+                        </span>
+                      )}
+                      {pkg.boosted && <span className="inline-flex items-center gap-1 rounded-full bg-amber-500 px-2 py-0.5 text-[9px] font-bold text-gray-900"><Zap className="h-2.5 w-2.5" />BOOSTED</span>}
+                      {pkg.featured && <span className="inline-flex items-center gap-1 rounded-full bg-red-600 px-2 py-0.5 text-[9px] font-bold text-white"><Star className="h-2.5 w-2.5" />FEATURED</span>}
+                    </div>
+                    <h3 className="text-sm font-bold text-white leading-tight">{pkg.title}</h3>
+                    {(pkg.minGuests || pkg.maxGuests) && (
+                      <p className="text-[10px] text-gray-500 mt-0.5">
+                        {pkg.minGuests && `${pkg.minGuests}`}{pkg.minGuests && pkg.maxGuests ? '–' : ''}{pkg.maxGuests && `${pkg.maxGuests}`} guests
+                      </p>
+                    )}
                   </div>
-                  <h3 className="text-sm font-bold text-white leading-tight">{pkg.title}</h3>
+                  <div className="shrink-0 text-right">
+                    <span className="block rounded-full bg-red-600 px-2.5 py-1 text-xs font-bold text-white whitespace-nowrap">
+                      {fmtPrice(pkg.price)}{pkg.priceType === 'per_person' ? '/pp' : ''}
+                    </span>
+                    {Number(pkg.savingsPercent) > 0 && (
+                      <span className="text-[10px] font-bold text-emerald-400 mt-1 block">
+                        {Math.round(Number(pkg.savingsPercent))}% savings
+                      </span>
+                    )}
+                  </div>
                 </div>
-                <span className="shrink-0 rounded-full bg-red-600 px-2.5 py-1 text-xs font-bold text-white whitespace-nowrap">
-                  {fmtPrice(pkg.price)}{pkg.priceType === 'per_person' ? '/pp' : ''}
-                </span>
+
+                {/* Stats row */}
+                <div className="grid grid-cols-3 gap-2 my-3">
+                  <div className="rounded-lg bg-gray-800 px-2 py-2 text-center">
+                    <p className="text-sm font-bold text-white">{pkg.leadsGenerated}</p>
+                    <p className="text-[9px] text-gray-500">Leads</p>
+                  </div>
+                  <div className="rounded-lg bg-gray-800 px-2 py-2 text-center">
+                    <p className="text-sm font-bold text-white">{bundledServices.length || pkg.serviceIds?.length || 0}</p>
+                    <p className="text-[9px] text-gray-500">Services</p>
+                  </div>
+                  <div className={`rounded-lg px-2 py-2 text-center ${pkg.status === 'active' ? 'bg-emerald-500/10' : 'bg-gray-800'}`}>
+                    <p className={`text-[10px] font-bold capitalize ${pkg.status === 'active' ? 'text-emerald-400' : 'text-gray-500'}`}>{pkg.status}</p>
+                    <p className="text-[9px] text-gray-500">Status</p>
+                  </div>
+                </div>
+
+                {/* Bundled service chips */}
+                {bundledServices.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mb-3">
+                    {bundledServices.map((s) => (
+                      <span key={s.id} className="inline-flex items-center gap-1 rounded-full border border-gray-700 bg-gray-800 px-2 py-0.5 text-[10px] text-gray-400">
+                        <Check className="h-2.5 w-2.5 text-emerald-400" />{s.title}
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                {pkg.description && (
+                  <p className="text-xs text-gray-500 line-clamp-2 leading-relaxed mb-3">{pkg.description}</p>
+                )}
+
+                {/* Actions */}
+                <div className="flex flex-wrap gap-2">
+                  <button type="button" onClick={() => onToggleStatus(pkg.id)}
+                    className="flex items-center gap-1.5 rounded-lg border border-gray-700 px-3 py-1.5 text-[11px] font-semibold text-gray-400 hover:border-gray-500 hover:text-white transition-all">
+                    {pkg.status === 'active'
+                      ? <><ToggleRight className="h-3.5 w-3.5 text-emerald-400" />Pause</>
+                      : <><ToggleLeft className="h-3.5 w-3.5" />Activate</>}
+                  </button>
+                  <button type="button" onClick={() => onToggleFeatured(pkg.id)}
+                    className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11px] font-bold transition-all ${
+                      pkg.featured
+                        ? 'border border-red-500/40 bg-red-500/10 text-red-400'
+                        : 'border border-gray-700 bg-gray-800 text-gray-400 hover:text-white'
+                    }`}>
+                    <Star className="h-3.5 w-3.5" />
+                    {pkg.featured ? 'Featured ✓' : 'Mark Featured'}
+                  </button>
+                  <button type="button" onClick={() => onToggleBoost(pkg.id)}
+                    className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11px] font-bold transition-all ${
+                      pkg.boosted
+                        ? 'border border-amber-500/40 bg-amber-500/10 text-amber-400'
+                        : 'border border-gray-700 bg-gray-800 text-gray-400 hover:text-white'
+                    }`}>
+                    <Zap className="h-3.5 w-3.5" />
+                    {pkg.boosted ? 'Boosted ✓' : 'Boost (10)'}
+                  </button>
+                  <button type="button" onClick={() => onViewLeads(pkg.id)}
+                    className="flex items-center gap-1.5 rounded-lg border border-gray-700 px-3 py-1.5 text-[11px] font-semibold text-gray-400 hover:border-gray-500 hover:text-white transition-all">
+                    <MessageSquare className="h-3.5 w-3.5" />{pkg.leadsGenerated} leads
+                  </button>
+                </div>
               </div>
-
-              <div className="grid grid-cols-2 gap-2 my-3">
-                <div className="rounded-lg bg-gray-800 px-3 py-2 text-center">
-                  <p className="text-base font-bold text-white">{pkg.leadsGenerated}</p>
-                  <p className="text-[10px] text-gray-500">Leads</p>
-                </div>
-                <div className={`rounded-lg px-3 py-2 text-center ${pkg.status === 'active' ? 'bg-emerald-500/10' : 'bg-gray-800'}`}>
-                  <p className={`text-base font-bold ${pkg.status === 'active' ? 'text-emerald-400' : 'text-gray-500'}`}>{pkg.status}</p>
-                  <p className="text-[10px] text-gray-500">Status</p>
-                </div>
-              </div>
-
-              {pkg.description && <p className="text-xs text-gray-500 line-clamp-2 leading-relaxed mb-3">{pkg.description}</p>}
-
-              {pkg.includes.length > 0 && (
-                <div className="flex flex-wrap gap-1.5 mb-3">
-                  {pkg.includes.map((v) => (
-                    <span key={v} className="rounded-full border border-gray-700 bg-gray-800 px-2 py-0.5 text-[10px] text-gray-400">{v}</span>
-                  ))}
-                </div>
-              )}
-
-              <div className="flex flex-wrap gap-2">
-                <button type="button" onClick={() => onToggleStatus(pkg.id)}
-                  className="flex items-center gap-1.5 rounded-lg border border-gray-700 px-3 py-1.5 text-[11px] font-semibold text-gray-400 hover:border-gray-500 hover:text-white transition-all">
-                  {pkg.status === 'active' ? <><ToggleRight className="h-3.5 w-3.5 text-emerald-400" />Deactivate</> : <><ToggleLeft className="h-3.5 w-3.5" />Activate</>}
-                </button>
-                <button type="button" onClick={() => onToggleBoost(pkg.id)}
-                  className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11px] font-bold transition-all ${
-                    pkg.boosted ? 'border border-amber-500/40 bg-amber-500/10 text-amber-400' : 'border border-gray-700 bg-gray-800 text-gray-400 hover:text-white'
-                  }`}>
-                  <Zap className="h-3.5 w-3.5" />
-                  {pkg.boosted ? 'Boosted ✓' : 'Boost (10)'}
-                </button>
-                <button type="button" onClick={() => onViewLeads(pkg.id)}
-                  className="flex items-center gap-1.5 rounded-lg border border-gray-700 px-3 py-1.5 text-[11px] font-semibold text-gray-400 hover:border-gray-500 hover:text-white transition-all">
-                  <MessageSquare className="h-3.5 w-3.5" />{pkg.leadsGenerated} leads
-                </button>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
-      </div>
+      )}
     </div>
   );
 }
@@ -1238,7 +1455,7 @@ function AvailabilitySection() {
     setSaving(true);
     try {
       await availabilityApi.blockDate(blockInput);
-      setAvail((prev) => prev ? { ...prev, blockedDates: [...prev.blockedDates, blockInput] } : null);
+      setAvail((prev) => prev ? { ...prev, blockedDates: [...new Set([...prev.blockedDates, blockInput])] } : null);
       setBlockInput('');
       setMsg('Date blocked');
     } catch { setMsg('Error'); }
@@ -1372,7 +1589,7 @@ function AvailabilitySection() {
                       if (day.status === 'blocked') unblockDate(day.date);
                       else {
                         availabilityApi.blockDate(day.date).then(() => {
-                          setAvail((prev) => prev ? { ...prev, blockedDates: [...prev.blockedDates, day.date] } : null);
+                          setAvail((prev) => prev ? { ...prev, blockedDates: [...new Set([...prev.blockedDates, day.date])] } : null);
                         });
                       }
                     }}
@@ -1412,7 +1629,7 @@ function AvailabilitySection() {
           <div className="mt-4">
             <p className="text-xs font-semibold text-gray-400 mb-2">Currently blocked:</p>
             <div className="flex flex-wrap gap-2">
-              {avail.blockedDates.sort().map((date) => (
+              {[...new Set(avail.blockedDates)].sort().map((date) => (
                 <span key={date} className="flex items-center gap-1.5 bg-red-900/30 border border-red-700/40 text-red-400 text-xs font-semibold px-2.5 py-1 rounded-full">
                   {new Date(date + 'T12:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
                   <button onClick={() => unblockDate(date)} className="text-red-400 hover:text-red-200 font-bold">×</button>
@@ -1520,15 +1737,22 @@ function DarkField({
 
 function DarkSelect({
   label, value, onChange, options, placeholder, error,
-}: { label: string; value: string; onChange: (v: string) => void; options: string[]; placeholder?: string; error?: string }) {
+}: {
+  label: string; value: string; onChange: (v: string) => void;
+  options: string[] | Array<{ value: string; label: string }>;
+  placeholder?: string; error?: string;
+}) {
   const borderCls = error ? 'border-red-500/60' : 'border-gray-700 focus:border-red-600/50';
+  const normalised: Array<{ value: string; label: string }> = options.map((o) =>
+    typeof o === 'string' ? { value: o, label: o } : o,
+  );
   return (
     <label className="block">
       <span className="mb-2 block text-[10px] font-bold uppercase tracking-wider text-gray-500">{label}</span>
       <select value={value} onChange={(e) => onChange(e.target.value)}
         className={`w-full rounded-xl border bg-gray-800 px-3 py-2.5 text-sm text-gray-300 outline-none ${borderCls}`}>
         {placeholder && <option value="">{placeholder}</option>}
-        {options.map((o) => <option key={o} value={o}>{o}</option>)}
+        {normalised.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
       </select>
       {error && <p className="mt-1 text-[11px] text-red-400">{error}</p>}
     </label>

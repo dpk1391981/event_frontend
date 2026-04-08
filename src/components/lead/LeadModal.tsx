@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Vendor } from '@/types';
+import { Vendor, VendorPackage } from '@/types';
 import { leadsApi } from '@/lib/api';
 
 interface Props {
@@ -10,16 +10,28 @@ interface Props {
   searchQuery?: string;
   budget?: number;
   guestCount?: number;
+  eventDate?: string;
+  // Package context — pre-fills the lead with package info
+  selectedPackage?: Pick<VendorPackage, 'id' | 'title' | 'price' | 'priceType' | 'includes' | 'addons'>;
 }
 
-export default function LeadModal({ vendor, onClose, searchQuery, budget, guestCount }: Props) {
+function fmt(n: number) {
+  if (n >= 100000) return `₹${(n / 100000).toFixed(n % 100000 === 0 ? 0 : 1)}L`;
+  return `₹${Math.round(n / 1000)}K`;
+}
+
+export default function LeadModal({
+  vendor, onClose, searchQuery, budget, guestCount, eventDate, selectedPackage,
+}: Props) {
   const [form, setForm] = useState({
     contactName: '',
     contactPhone: '',
     contactEmail: '',
-    requirement: '',
-    eventDate: '',
-    budget: budget || '',
+    requirement: selectedPackage
+      ? `Interested in: ${selectedPackage.title}`
+      : '',
+    eventDate: eventDate || '',
+    budget: budget || (selectedPackage?.price ?? ''),
     guestCount: guestCount || '',
   });
   const [loading, setLoading] = useState(false);
@@ -33,6 +45,7 @@ export default function LeadModal({ vendor, onClose, searchQuery, budget, guestC
     try {
       await leadsApi.create({
         vendorId: vendor.id,
+        packageId: selectedPackage?.id,
         contactName: form.contactName,
         contactPhone: form.contactPhone,
         contactEmail: form.contactEmail || undefined,
@@ -40,7 +53,7 @@ export default function LeadModal({ vendor, onClose, searchQuery, budget, guestC
         eventDate: form.eventDate || undefined,
         budget: form.budget ? Number(form.budget) : undefined,
         guestCount: form.guestCount ? Number(form.guestCount) : undefined,
-        source: searchQuery ? 'search' : 'vendor_profile',
+        source: selectedPackage ? 'package' : searchQuery ? 'search' : 'vendor_profile',
         searchQuery,
       });
       setSuccess(true);
@@ -51,7 +64,8 @@ export default function LeadModal({ vendor, onClose, searchQuery, budget, guestC
     }
   };
 
-  const inputClass = 'w-full border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-red-200 focus:border-red-400 transition';
+  const inputClass =
+    'w-full border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-red-200 focus:border-red-400 transition';
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
@@ -60,7 +74,9 @@ export default function LeadModal({ vendor, onClose, searchQuery, budget, guestC
         <div className="sticky top-0 bg-white px-5 pt-5 pb-4 border-b border-gray-100 rounded-t-2xl">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-lg font-bold text-gray-900">Get Free Quote</h2>
+              <h2 className="text-lg font-bold text-gray-900">
+                {selectedPackage ? 'Book This Package' : 'Get Free Quote'}
+              </h2>
               <p className="text-sm text-gray-500 mt-0.5">{vendor.businessName}</p>
             </div>
             <button
@@ -84,7 +100,7 @@ export default function LeadModal({ vendor, onClose, searchQuery, budget, guestC
             <h3 className="text-xl font-bold text-gray-900 mb-2">Request Sent! 🎉</h3>
             <p className="text-gray-500 text-sm mb-6 leading-relaxed">
               <span className="font-semibold text-gray-700">{vendor.businessName}</span> will contact you shortly.
-              Expect a call within 2 hours.
+              Expect a response within 2 hours.
             </p>
             <button
               onClick={onClose}
@@ -95,6 +111,44 @@ export default function LeadModal({ vendor, onClose, searchQuery, budget, guestC
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="p-5 space-y-4">
+            {/* Package summary banner */}
+            {selectedPackage && (
+              <div className="rounded-xl bg-red-50 border border-red-100 px-4 py-3">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-red-600 mb-1">Selected Package</p>
+                <p className="font-bold text-gray-900 text-sm leading-tight">{selectedPackage.title}</p>
+                <div className="flex items-center gap-2 mt-1">
+                  <span className="text-sm font-bold text-red-600">
+                    {fmt(Number(selectedPackage.price))}
+                    {selectedPackage.priceType === 'per_person' ? '/person' : ''}
+                  </span>
+                </div>
+                {selectedPackage.includes && selectedPackage.includes.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mt-2">
+                    {selectedPackage.includes.slice(0, 4).map((item) => (
+                      <span key={item} className="rounded-full bg-white border border-red-200 px-2 py-0.5 text-[10px] font-semibold text-gray-600">
+                        {item}
+                      </span>
+                    ))}
+                    {selectedPackage.includes.length > 4 && (
+                      <span className="text-[10px] text-gray-400">+{selectedPackage.includes.length - 4} more</span>
+                    )}
+                  </div>
+                )}
+                {selectedPackage.addons && selectedPackage.addons.length > 0 && (
+                  <div className="mt-2">
+                    <p className="text-[10px] font-semibold text-gray-500 mb-1">Available add-ons:</p>
+                    <div className="flex flex-wrap gap-1">
+                      {selectedPackage.addons.map((a, i) => (
+                        <span key={i} className="rounded-full bg-amber-50 border border-amber-200 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
+                          + {a.label} ({fmt(a.price)})
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1.5">Your Name *</label>
               <input
@@ -186,7 +240,7 @@ export default function LeadModal({ vendor, onClose, searchQuery, budget, guestC
                   <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                   Sending...
                 </span>
-              ) : 'Send Request — It\'s Free'}
+              ) : selectedPackage ? 'Book This Package — Free' : "Send Request — It's Free"}
             </button>
 
             <p className="text-center text-xs text-gray-400">

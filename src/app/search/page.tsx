@@ -2,10 +2,11 @@
 
 import { Suspense, useState, useEffect, useCallback } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { searchApi, locationsApi, categoriesApi } from '@/lib/api';
-import { Vendor, City, Category, SearchResult } from '@/types';
+import { searchApi, locationsApi, categoriesApi, packagesApi } from '@/lib/api';
+import { Vendor, City, Category, SearchResult, VendorPackage } from '@/types';
 import VendorListCard from '@/components/vendor/VendorListCard';
 import VendorCard from '@/components/vendor/VendorCard';
+import PackageCard from '@/components/packages/PackageCard';
 import GlobalSearch from '@/components/search/GlobalSearch';
 import LeadModal from '@/components/lead/LeadModal';
 
@@ -201,9 +202,15 @@ function SearchPageInner() {
   const [cities, setCities] = useState<City[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [selectedVendor, setSelectedVendor] = useState<Vendor | null>(null);
+  const [selectedPackage, setSelectedPackage] = useState<VendorPackage | null>(null);
   const [filtersOpen, setFiltersOpen] = useState(false);
 
-  const [activeTab, setActiveTab] = useState<'recommended' | 'rated' | 'price'>('recommended');
+  // Package results
+  const [packages, setPackages] = useState<VendorPackage[]>([]);
+  const [packagesLoading, setPackagesLoading] = useState(false);
+  const [packagesMeta, setPackagesMeta] = useState({ total: 0, page: 1, limit: 12 });
+
+  const [activeTab, setActiveTab] = useState<'packages' | 'recommended' | 'rated' | 'price'>('packages');
 
   const [filters, setFilters] = useState({
     cityId: searchParams.get('cityId') ? Number(searchParams.get('cityId')) : 0,
@@ -253,7 +260,29 @@ function SearchPageInner() {
     }
   }, [query, isNlp, filters]);
 
+  const doPackageSearch = useCallback(async () => {
+    setPackagesLoading(true);
+    try {
+      const res = await packagesApi.search({
+        q: query || undefined,
+        cityId: filters.cityId || undefined,
+        categoryId: filters.categoryId || undefined,
+        maxBudget: filters.maxBudget || undefined,
+        eventDate: filters.eventDate || undefined,
+        page: packagesMeta.page,
+        limit: 12,
+      }) as unknown as { data: VendorPackage[]; meta: { total: number; page: number; limit: number } };
+      setPackages(res.data ?? []);
+      setPackagesMeta(res.meta ?? { total: 0, page: 1, limit: 12 });
+    } catch {
+      setPackages([]);
+    } finally {
+      setPackagesLoading(false);
+    }
+  }, [query, filters.cityId, filters.categoryId, filters.maxBudget, filters.eventDate, packagesMeta.page]);
+
   useEffect(() => { doSearch(); }, [doSearch]);
+  useEffect(() => { doPackageSearch(); }, [doPackageSearch]);
 
   const updateFilter = (key: string, value: unknown) =>
     setFilters((prev) => ({ ...prev, [key]: value, page: 1 }));
@@ -269,10 +298,12 @@ function SearchPageInner() {
 
   const handleSearch = (q: string) => router.push(`/search?q=${encodeURIComponent(q)}&nlp=1`);
 
-  const handleTabChange = (tab: 'recommended' | 'rated' | 'price') => {
+  const handleTabChange = (tab: 'packages' | 'recommended' | 'rated' | 'price') => {
     setActiveTab(tab);
-    const sortMap = { recommended: 'relevance', rated: 'rating', price: 'price_low' } as const;
-    setFilters((prev) => ({ ...prev, sortBy: sortMap[tab], page: 1 }));
+    if (tab !== 'packages') {
+      const sortMap = { recommended: 'relevance', rated: 'rating', price: 'price_low' } as const;
+      setFilters((prev) => ({ ...prev, sortBy: sortMap[tab as keyof typeof sortMap], page: 1 }));
+    }
   };
 
   return (
@@ -342,14 +373,15 @@ function SearchPageInner() {
         {/* Tab bar */}
         <div className="flex items-center gap-1 bg-white border border-gray-200 rounded-xl p-1 mb-5 overflow-x-auto scrollbar-hide w-full sm:w-fit">
           {([
-            { key: 'recommended', label: 'Recommended', icon: '✦' },
-            { key: 'rated', label: 'Top Rated', icon: '⭐' },
-            { key: 'price', label: 'Best Price', icon: '₹' },
+            { key: 'packages',     label: 'Packages',     icon: '📦' },
+            { key: 'recommended',  label: 'Vendors',      icon: '✦' },
+            { key: 'rated',        label: 'Top Rated',    icon: '⭐' },
+            { key: 'price',        label: 'Best Price',   icon: '₹' },
           ] as const).map((tab) => (
             <button
               key={tab.key}
               onClick={() => handleTabChange(tab.key)}
-              className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
+              className={`relative flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
                 activeTab === tab.key
                   ? 'bg-red-600 text-white shadow-sm'
                   : 'text-gray-500 hover:text-gray-800'
@@ -357,6 +389,11 @@ function SearchPageInner() {
             >
               <span>{tab.icon}</span>
               <span>{tab.label}</span>
+              {tab.key === 'packages' && packages.length > 0 && activeTab !== 'packages' && (
+                <span className="ml-1 bg-red-100 text-red-600 text-[10px] font-bold px-1.5 py-0.5 rounded-full">
+                  {packages.length}
+                </span>
+              )}
             </button>
           ))}
         </div>
@@ -382,6 +419,12 @@ function SearchPageInner() {
                   <span className="flex items-center gap-2">
                     <span className="w-4 h-4 border-2 border-red-300 border-t-red-600 rounded-full animate-spin inline-block" />
                     Searching...
+                  </span>
+                ) : activeTab === 'packages' ? (
+                  <span>
+                    <strong className="text-gray-900 text-base">{packagesMeta.total}</strong>
+                    <span className="text-gray-500"> packages found</span>
+                    {query && <span> for &ldquo;<span className="text-gray-700 font-medium">{query}</span>&rdquo;</span>}
                   </span>
                 ) : result ? (
                   <span>
@@ -439,11 +482,68 @@ function SearchPageInner() {
               </div>
             )}
 
-            {/* ── Loading ── */}
-            {loading && <ListSkeleton />}
+            {/* ── Package Results ── */}
+            {activeTab === 'packages' && (
+              <>
+                {packagesLoading ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+                    {[...Array(6)].map((_, i) => (
+                      <div key={i} className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+                        <div className="p-4 space-y-3">
+                          <div className="h-3 skeleton rounded w-1/3" />
+                          <div className="h-5 skeleton rounded w-3/4" />
+                          <div className="h-3 skeleton rounded w-1/2" />
+                          <div className="flex gap-1.5 mt-2">
+                            {[...Array(3)].map((_, j) => <div key={j} className="h-5 skeleton rounded-full w-20" />)}
+                          </div>
+                          <div className="h-9 skeleton rounded-xl mt-2" />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : packages.length > 0 ? (
+                  <>
+                    {filters.eventDate && (
+                      <p className="text-xs text-emerald-700 font-semibold mb-3">
+                        ✓ Showing {packages.length} packages available on your selected date
+                      </p>
+                    )}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+                      {packages.map((pkg) => (
+                        <PackageCard
+                          key={pkg.id}
+                          pkg={pkg}
+                          onBook={(p) => {
+                            setSelectedPackage(p);
+                            setSelectedVendor(p.vendor as any);
+                          }}
+                        />
+                      ))}
+                    </div>
+                  </>
+                ) : (
+                  <div className="text-center py-20">
+                    <div className="text-6xl mb-4">📦</div>
+                    <h3 className="text-lg font-extrabold text-gray-800 mb-2">No packages found</h3>
+                    <p className="text-gray-500 text-sm mb-5 max-w-sm mx-auto">
+                      Vendors in this area haven&apos;t published packages yet. Browse individual vendors below.
+                    </p>
+                    <button
+                      onClick={() => handleTabChange('recommended')}
+                      className="bg-red-600 text-white px-6 py-2.5 rounded-full text-sm font-bold hover:bg-red-700 transition"
+                    >
+                      Browse Vendors
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
 
-            {/* ── Results ── */}
-            {!loading && result?.data.length ? (
+            {/* ── Vendor Loading ── */}
+            {activeTab !== 'packages' && loading && <ListSkeleton />}
+
+            {/* ── Vendor Results ── */}
+            {activeTab !== 'packages' && !loading && result?.data.length ? (
               <>
                 {/* Mobile: always 2-col grid */}
                 <div className="sm:hidden grid grid-cols-2 gap-3">
@@ -501,7 +601,7 @@ function SearchPageInner() {
                   </div>
                 )}
               </>
-            ) : !loading && (
+            ) : activeTab !== 'packages' && !loading && (
               <div className="text-center py-24">
                 <div className="text-7xl mb-5">🔍</div>
                 <h3 className="text-xl font-extrabold text-gray-800 mb-2">No vendors found</h3>
@@ -528,10 +628,12 @@ function SearchPageInner() {
       {selectedVendor && (
         <LeadModal
           vendor={selectedVendor}
-          onClose={() => setSelectedVendor(null)}
+          onClose={() => { setSelectedVendor(null); setSelectedPackage(null); }}
           searchQuery={query}
           budget={result?.parsedIntent?.budget}
           guestCount={result?.parsedIntent?.guestCount}
+          eventDate={filters.eventDate || undefined}
+          selectedPackage={selectedPackage ?? undefined}
         />
       )}
     </div>

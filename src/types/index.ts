@@ -53,6 +53,10 @@ export interface Vendor {
   availability?: Record<string, boolean>;
   plan?: 'free' | 'basic' | 'pro' | 'elite';
   status: 'pending' | 'active' | 'suspended';
+  // Enriched fields added by the event plan generator
+  matchScore?: number;
+  priceEstimate?: number;
+  reason?: string;
 }
 
 export type LeadStatus = 'new' | 'viewed' | 'contacted' | 'converted' | 'rejected';
@@ -230,6 +234,11 @@ export interface TokenWallet {
 }
 
 export interface EventPlan {
+  summary: {
+    estimatedTotal: number;
+    withinBudget: boolean;
+    confidenceScore: number;
+  };
   eventType: string;
   totalBudget: number;
   guestCount?: number;
@@ -239,5 +248,6 @@ export interface EventPlan {
     budgetAllocation: number;
     allocatedBudget: number;
     vendors: Vendor[];
+    data_missing?: boolean;
   }>;
 }

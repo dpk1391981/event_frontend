@@ -18,7 +18,7 @@ function HomeIcon({ className = 'w-5 h-5' }: { className?: string }) {
 const QUICK_LINKS = [
   { label: 'Find Vendors',    href: '/search',                  Icon: SearchIcon,    desc: 'Search photographers, caterers, venues & more' },
   { label: 'Plan an Event',   href: '/plan',                    Icon: ClipboardIcon, desc: 'Get tailored vendor recommendations' },
-  { label: 'Wedding Vendors', href: '/search?category=wedding', Icon: WeddingIcon,   desc: 'Photographers, makeup, decorators & more' },
+  { label: 'Wedding Vendors', href: '/wedding-planners-in-delhi', Icon: WeddingIcon,   desc: 'Photographers, makeup, decorators & more' },
   { label: 'List Business',   href: '/partner/onboard',         Icon: StoreIcon,     desc: 'Grow your event business with us' },
 ];
 

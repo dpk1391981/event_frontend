@@ -2,9 +2,11 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useEffect, useState } from 'react';
 import { useAppStore } from '@/store/useAppStore';
 import TokenBadge from './TokenBadge';
 import { LogoMark, LeadsIcon, TokenIcon, LogoutIcon } from '@/components/ui/Icon';
+import { vendorPanelApi } from '@/lib/api';
 
 // Inline SVGs for nav icons (no external dep)
 function OverviewIcon({ className = 'w-4 h-4' }: { className?: string }) {
@@ -17,11 +19,7 @@ function OverviewIcon({ className = 'w-4 h-4' }: { className?: string }) {
     </svg>
   );
 }
-const NAV = [
-  { href: '/vendor/dashboard',          label: 'Overview',  icon: OverviewIcon },
-  { href: '/vendor/dashboard/leads',    label: 'Leads',     icon: LeadsIcon },
-  { href: '/vendor/dashboard/tokens',   label: 'Tokens',    icon: TokenIcon },
-];
+// NAV is defined inside component to access newLeads state — see below
 
 interface Props {
   children: React.ReactNode;
@@ -31,6 +29,19 @@ interface Props {
 export default function DashboardLayout({ children, tokenBalance = 0 }: Props) {
   const pathname = usePathname();
   const { user, logout } = useAppStore();
+  const [newLeads, setNewLeads] = useState(0);
+
+  useEffect(() => {
+    vendorPanelApi.getLeadStats()
+      .then((stats: any) => setNewLeads(stats?.newLeads || 0))
+      .catch(() => {});
+  }, []);
+
+  const NAV = [
+    { href: '/vendor/dashboard',          label: 'Overview',  icon: OverviewIcon, badge: 0 },
+    { href: '/vendor/dashboard/leads',    label: 'Leads',     icon: LeadsIcon,    badge: newLeads },
+    { href: '/vendor/dashboard/tokens',   label: 'Tokens',    icon: TokenIcon,    badge: 0 },
+  ];
 
   return (
     <div className="min-h-screen bg-gray-50 flex">
@@ -66,7 +77,12 @@ export default function DashboardLayout({ children, tokenBalance = 0 }: Props) {
                 }`}
               >
                 <IconComponent className="w-4 h-4 shrink-0" />
-                {item.label}
+                <span className="flex-1">{item.label}</span>
+                {item.badge > 0 && (
+                  <span className="bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center">
+                    {item.badge > 99 ? '99+' : item.badge}
+                  </span>
+                )}
               </Link>
             );
           })}
@@ -99,8 +115,15 @@ export default function DashboardLayout({ children, tokenBalance = 0 }: Props) {
           const IconComponent = item.icon;
           return (
             <Link key={item.href} href={item.href}
-              className={`flex-1 flex flex-col items-center py-2 text-[10px] font-semibold transition ${active ? 'text-red-600' : 'text-gray-400'}`}>
-              <IconComponent className="w-5 h-5 mb-0.5" />
+              className={`flex-1 flex flex-col items-center py-2 text-[10px] font-semibold transition relative ${active ? 'text-red-600' : 'text-gray-400'}`}>
+              <div className="relative">
+                <IconComponent className="w-5 h-5 mb-0.5" />
+                {item.badge > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[8px] font-bold w-3.5 h-3.5 rounded-full flex items-center justify-center">
+                    {item.badge > 9 ? '9+' : item.badge}
+                  </span>
+                )}
+              </div>
               {item.label}
             </Link>
           );

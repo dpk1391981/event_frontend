@@ -4,6 +4,7 @@ import './globals.css';
 import Header from '@/components/layout/Header';
 import Footer from '@/components/layout/Footer';
 import LaunchGate from '@/components/launch/LaunchGate';
+import GlobalLeadCTA from '@/components/lead/GlobalLeadCTA';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -76,6 +77,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <Header />
           <div className="flex-1 min-w-0">{children}</div>
           <Footer />
+          <GlobalLeadCTA />
         </LaunchGate>
       </body>
     </html>

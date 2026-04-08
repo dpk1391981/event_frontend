@@ -65,6 +65,7 @@ export const categoriesApi = {
 // ─── Leads ────────────────────────────────────────────────────────────────────
 export const leadsApi = {
   create: (data: unknown) => api.post('/leads', data),
+  route: (data: unknown) => api.post('/leads/route', data),
   getVendorLeads: (vendorId: number, page = 1, limit = 20) =>
     api.get(`/leads/vendor/${vendorId}`, { params: { page, limit } }),
   getStats: (vendorId: number) => api.get(`/leads/vendor/${vendorId}/stats`),
@@ -210,6 +211,33 @@ export const vendorPanelApi = {
   getTransactions:  (page = 1) => api.get('/vendor/wallet/transactions', { params: { page } }),
 };
 
+// ─── SEO (Public) ─────────────────────────────────────────────────────────────
+export const seoPublicApi = {
+  getPage:       (slug: string) => api.get(`/seo/page/${slug}`),
+  getFooterLinks: () => api.get('/seo/footer-links'),
+  getSitemap:    () => api.get('/seo/sitemap'),
+};
+
+// ─── SEO Admin ────────────────────────────────────────────────────────────────
+export const seoAdminApi = {
+  // Pages
+  listPages:    (page = 1, limit = 20, search?: string, pageType?: string) =>
+    api.get('/seo/admin/pages', { params: { page, limit, search, pageType } }),
+  getPage:      (id: number) => api.get(`/seo/admin/pages/${id}`),
+  createPage:   (data: unknown) => api.post('/seo/admin/pages', data),
+  updatePage:   (id: number, data: unknown) => api.put(`/seo/admin/pages/${id}`, data),
+  togglePage:   (id: number) => api.patch(`/seo/admin/pages/${id}/toggle`),
+  deletePage:   (id: number) => api.delete(`/seo/admin/pages/${id}`),
+  // Footer links
+  listFooterLinks:   (page = 1) => api.get('/seo/admin/footer-links', { params: { page } }),
+  createFooterLink:  (data: unknown) => api.post('/seo/admin/footer-links', data),
+  updateFooterLink:  (id: number, data: unknown) => api.put(`/seo/admin/footer-links/${id}`, data),
+  deleteFooterLink:  (id: number) => api.delete(`/seo/admin/footer-links/${id}`),
+  // Bulk
+  seed:          () => api.post('/seo/admin/seed'),
+  generate:      () => api.post('/seo/generate'),
+};
+
 // ─── Admin ────────────────────────────────────────────────────────────────────
 export const adminApi = {
   dashboard:              () => api.get('/admin/dashboard'),
@@ -223,7 +251,17 @@ export const adminApi = {
   toggleFeatured:         (id: number) => api.patch(`/admin/vendors/${id}/featured`),
   updateVendorRank:       (id: number, data: { rankWeight?: number; profileScore?: number; isFeatured?: boolean }) =>
                             api.patch(`/admin/vendors/${id}/rank`, data),
-  getLeads:               (page = 1) => api.get('/admin/leads', { params: { page } }),
+  getLeads: (
+    page = 1,
+    filters: { status?: string; cityId?: number; categoryId?: number; source?: string } = {},
+  ) => api.get('/admin/leads', { params: { page, ...filters } }),
+  getLeadAnalytics:       () => api.get('/admin/leads/analytics'),
+  getLeadDetail:          (id: number) => api.get(`/admin/leads/${id}`),
+  updateLeadStatus:       (id: number, status: string) => api.patch(`/admin/leads/${id}/status`, { status }),
+  reassignLead:           (id: number, vendorId: number) => api.patch(`/admin/leads/${id}/reassign`, { vendorId }),
+  assignLeadToVendor:     (id: number, vendorId: number) => api.post(`/admin/leads/${id}/assign`, { vendorId }),
+  unassignLead:           (id: number) => api.patch(`/admin/leads/${id}/unassign`),
+  seedLeads:              () => api.post('/admin/seed-leads'),
   makeAdmin:              (id: number) => api.patch(`/admin/users/${id}/make-admin`),
   seed:                   () => api.post('/admin/seed'),
   getCategories:          (type?: string) => api.get('/admin/categories', { params: { type } }),

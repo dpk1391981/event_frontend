@@ -53,13 +53,26 @@ export const vendorsApi = {
 
 // ─── Locations ────────────────────────────────────────────────────────────────
 export const locationsApi = {
-  getCities: () => api.get('/locations/cities'),
-  getLocalities: (cityId: number) => api.get(`/locations/cities/${cityId}/localities`),
+  getCities:      ()             => api.get('/locations/cities'),
+  getLocalities:  (cityId: number) => api.get(`/locations/cities/${cityId}/localities`),
+  // Admin CRUD
+  createCity:     (data: unknown)  => api.post('/locations/cities', data),
+  updateCity:     (id: number, data: unknown) => api.patch(`/locations/cities/${id}`, data),
+  removeCity:     (id: number)     => api.delete(`/locations/cities/${id}`),
+  getAllLocalities: ()              => api.get('/locations/admin/localities'),
+  createLocality: (data: unknown)  => api.post('/locations/localities', data),
+  updateLocality: (id: number, data: unknown) => api.patch(`/locations/localities/${id}`, data),
+  removeLocality: (id: number)     => api.delete(`/locations/localities/${id}`),
 };
 
 // ─── Categories ───────────────────────────────────────────────────────────────
 export const categoriesApi = {
-  getAll: (type?: string) => api.get('/categories', { params: { type } }),
+  getAll:  (type?: string) => api.get('/categories', { params: { type } }),
+  getOne:  (id: number)    => api.get(`/categories/${id}`),
+  // Admin CRUD — requires JWT + admin role
+  create:  (data: unknown) => api.post('/categories', data),
+  update:  (id: number, data: unknown) => api.patch(`/categories/${id}`, data),
+  remove:  (id: number)    => api.delete(`/categories/${id}`),
 };
 
 // ─── Leads ────────────────────────────────────────────────────────────────────

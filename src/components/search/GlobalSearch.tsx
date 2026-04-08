@@ -3,24 +3,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAppStore } from '@/store/useAppStore';
-
-const TRENDING_SEARCHES = [
-  { q: 'Wedding photographer Noida', category: 'photography' },
-  { q: 'Caterer for 200 guests Delhi', category: 'catering' },
-  { q: 'DJ for sangeet night', category: 'dj-music' },
-  { q: 'Bridal makeup Gurgaon', category: 'makeup' },
-  { q: 'Birthday party venue Noida', category: 'venue' },
-  { q: 'Flower decoration wedding', category: 'decoration' },
-];
-
-const QUICK_CATEGORIES = [
-  { label: 'Wedding',     slug: 'wedding' },
-  { label: 'Photography', slug: 'photography' },
-  { label: 'Catering',    slug: 'catering' },
-  { label: 'Venues',      slug: 'venue' },
-  { label: 'DJ & Music',  slug: 'dj-music' },
-  { label: 'Makeup',      slug: 'makeup' },
-];
+import { categoriesApi } from '@/lib/api';
+import { Category } from '@/types';
 
 const RECENT_KEY = 'pt_recent_searches';
 
@@ -48,6 +32,7 @@ export default function GlobalSearch({ compact = false, placeholder, autoFocus }
   const [open, setOpen] = useState(false);
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const [recent, setRecent] = useState<string[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
   const mobileInputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -56,6 +41,12 @@ export default function GlobalSearch({ compact = false, placeholder, autoFocus }
     ? `Search vendors in ${selectedCity.name}…`
     : 'Search photographers, caterers, venues…'
   );
+
+  useEffect(() => {
+    categoriesApi.getAll().then((cats) => {
+      setCategories(((cats as unknown) as Category[]).filter((c) => c.isActive !== false).slice(0, 12));
+    }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (open || mobileSearchOpen) setRecent(getRecent());
@@ -98,8 +89,9 @@ export default function GlobalSearch({ compact = false, placeholder, autoFocus }
   };
 
   const clearRecent = () => { localStorage.removeItem(RECENT_KEY); setRecent([]); };
-  const filtered = query.trim()
-    ? TRENDING_SEARCHES.filter((s) => s.q.toLowerCase().includes(query.toLowerCase()))
+  // Category-based suggestions that match the current query
+  const filteredCats = query.trim()
+    ? categories.filter((c) => c.name.toLowerCase().includes(query.toLowerCase())).slice(0, 5)
     : [];
 
   /* ── Full hero search (non-compact) ────────────────────────────────────── */
@@ -139,7 +131,7 @@ export default function GlobalSearch({ compact = false, placeholder, autoFocus }
           </button>
         </div>
         {open && (
-          <DesktopDropdown query={query} recent={recent} filtered={filtered} onSelect={submit} onClearRecent={clearRecent} />
+          <DesktopDropdown query={query} recent={recent} filteredCats={filteredCats} categories={categories} onSelect={submit} onClearRecent={clearRecent} />
         )}
       </div>
     );
@@ -181,7 +173,7 @@ export default function GlobalSearch({ compact = false, placeholder, autoFocus }
           </button>
         </div>
         {open && (
-          <DesktopDropdown query={query} recent={recent} filtered={filtered} onSelect={submit} onClearRecent={clearRecent} compact />
+          <DesktopDropdown query={query} recent={recent} filteredCats={filteredCats} categories={categories} onSelect={submit} onClearRecent={clearRecent} compact />
         )}
       </div>
 
@@ -200,7 +192,8 @@ export default function GlobalSearch({ compact = false, placeholder, autoFocus }
           query={query}
           setQuery={setQuery}
           recent={recent}
-          filtered={filtered}
+          filteredCats={filteredCats}
+          categories={categories}
           inputRef={mobileInputRef}
           onClose={() => { setMobileSearchOpen(false); setQuery(''); }}
           onSubmit={submit}
@@ -215,12 +208,13 @@ export default function GlobalSearch({ compact = false, placeholder, autoFocus }
 
 /* ── Mobile full-screen overlay ──────────────────────────────────────────── */
 function MobileSearchOverlay({
-  query, setQuery, recent, filtered, inputRef, onClose, onSubmit, onClearRecent, onKey, selectedCityName,
+  query, setQuery, recent, filteredCats, categories, inputRef, onClose, onSubmit, onClearRecent, onKey, selectedCityName,
 }: {
   query: string;
   setQuery: (v: string) => void;
   recent: string[];
-  filtered: typeof TRENDING_SEARCHES;
+  filteredCats: Category[];
+  categories: Category[];
   inputRef: React.RefObject<HTMLInputElement | null>;
   onClose: () => void;
   onSubmit: (q: string) => void;
@@ -272,13 +266,13 @@ function MobileSearchOverlay({
         {/* Typing suggestions */}
         {query.trim() && (
           <div className="p-3">
-            {filtered.length > 0 ? (
+            {filteredCats.length > 0 ? (
               <div className="space-y-1">
-                {filtered.map((s) => (
-                  <button key={s.q} onClick={() => onSubmit(s.q)}
+                {filteredCats.map((c) => (
+                  <button key={c.id} onClick={() => onSubmit(c.name + ' vendors')}
                     className="w-full flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-red-50 active:bg-red-100 text-left transition">
                     <SearchSVG className="w-4 h-4 text-gray-400 shrink-0" />
-                    <span className="text-sm text-gray-700 flex-1">{s.q}</span>
+                    <span className="text-sm text-gray-700 flex-1">{c.name} vendors</span>
                     <ArrowTopLeftSVG className="w-4 h-4 text-gray-300 shrink-0" />
                   </button>
                 ))}
@@ -313,36 +307,18 @@ function MobileSearchOverlay({
           </div>
         )}
 
-        {/* Trending */}
-        {!query.trim() && (
-          <div className="px-4 pt-4 pb-2">
-            <div className="flex items-center gap-2 mb-2">
-              <TrendSVG className="w-4 h-4 text-orange-500" />
-              <span className="text-xs font-bold text-gray-500 uppercase tracking-widest">Trending</span>
-            </div>
-            <div className="space-y-0.5">
-              {TRENDING_SEARCHES.map((s) => (
-                <button key={s.q} onClick={() => onSubmit(s.q)}
-                  className="w-full flex items-center gap-3 px-2 py-3 rounded-xl hover:bg-red-50 active:bg-red-100 text-left transition">
-                  <TrendSVG className="w-4 h-4 text-orange-400 shrink-0" />
-                  <span className="text-sm text-gray-700 flex-1">{s.q}</span>
-                  <ArrowTopLeftSVG className="w-4 h-4 text-gray-300 shrink-0" />
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
         {/* Quick categories */}
-        {!query.trim() && (
+        {!query.trim() && categories.length > 0 && (
           <div className="px-4 pt-4 pb-8">
             <span className="text-xs font-bold text-gray-500 uppercase tracking-widest block mb-3">Browse by Category</span>
             <div className="grid grid-cols-3 gap-2">
-              {QUICK_CATEGORIES.map((c) => (
-                <button key={c.slug} onClick={() => onSubmit(c.label + ' vendors')}
-                  className="flex flex-col items-center justify-center gap-1 bg-gray-50 border border-gray-200 rounded-2xl py-4 px-2 hover:bg-red-50 hover:border-red-200 active:bg-red-100 transition text-xs font-semibold text-gray-600">
-                  <CategoryDotSVG />
-                  {c.label}
+              {categories.slice(0, 9).map((c) => (
+                <button key={c.id} onClick={() => onSubmit(c.name + ' vendors')}
+                  className="flex flex-col items-center justify-center gap-1 bg-gray-50 border border-gray-200 rounded-2xl py-4 px-2 hover:bg-red-50 hover:border-red-200 active:bg-red-100 transition text-xs font-semibold text-gray-600 text-center">
+                  {c.icon && c.icon.length <= 4
+                    ? <span className="text-xl">{c.icon}</span>
+                    : <CategoryDotSVG />}
+                  {c.name}
                 </button>
               ))}
             </div>
@@ -355,9 +331,9 @@ function MobileSearchOverlay({
 
 /* ── Desktop dropdown (shared) ───────────────────────────────────────────── */
 function DesktopDropdown({
-  query, recent, filtered, onSelect, onClearRecent, compact = false,
+  query, recent, filteredCats, categories, onSelect, onClearRecent, compact = false,
 }: {
-  query: string; recent: string[]; filtered: typeof TRENDING_SEARCHES;
+  query: string; recent: string[]; filteredCats: Category[]; categories: Category[];
   onSelect: (q: string) => void; onClearRecent: () => void; compact?: boolean;
 }) {
   return (
@@ -366,13 +342,13 @@ function DesktopDropdown({
     }`}>
       {query && (
         <div className="p-3 border-b border-gray-50">
-          {filtered.length > 0 ? (
+          {filteredCats.length > 0 ? (
             <div className="space-y-1">
-              {filtered.map((s) => (
-                <button key={s.q} onClick={() => onSelect(s.q)}
+              {filteredCats.map((c) => (
+                <button key={c.id} onClick={() => onSelect(c.name + ' vendors')}
                   className="w-full flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-red-50 text-left transition group">
                   <SearchSVG className="w-4 h-4 text-gray-400 group-hover:text-red-500" />
-                  <span className="text-sm text-gray-700 group-hover:text-red-700 flex-1">{s.q}</span>
+                  <span className="text-sm text-gray-700 group-hover:text-red-700 flex-1">{c.name} vendors</span>
                   <ChevronRightSVG className="w-3.5 h-3.5 text-gray-300 group-hover:text-red-400" />
                 </button>
               ))}
@@ -405,33 +381,14 @@ function DesktopDropdown({
         </div>
       )}
 
-      {!query && (
-        <div className="p-3">
-          <div className="flex items-center gap-1.5 mb-2 px-1">
-            <TrendSVG className="w-3.5 h-3.5 text-orange-500" />
-            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Trending</span>
-          </div>
-          <div className="space-y-1">
-            {TRENDING_SEARCHES.slice(0, 5).map((s) => (
-              <button key={s.q} onClick={() => onSelect(s.q)}
-                className="w-full flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-red-50 text-left transition group">
-                <TrendSVG className="w-4 h-4 text-orange-400 shrink-0" />
-                <span className="text-sm text-gray-700 group-hover:text-red-700 flex-1">{s.q}</span>
-                <ChevronRightSVG className="w-3.5 h-3.5 text-gray-300 group-hover:text-red-400" />
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {!query && (
+      {!query && categories.length > 0 && (
         <div className="px-4 py-3 bg-gray-50 border-t border-gray-100">
           <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Quick Search</p>
           <div className="flex flex-wrap gap-2">
-            {QUICK_CATEGORIES.map((c) => (
-              <button key={c.slug} onClick={() => onSelect(c.label + ' vendors')}
+            {categories.slice(0, 8).map((c) => (
+              <button key={c.id} onClick={() => onSelect(c.name + ' vendors')}
                 className="bg-white border border-gray-200 text-gray-600 text-xs font-medium px-3 py-1.5 rounded-full hover:border-red-300 hover:text-red-600 hover:bg-red-50 transition">
-                {c.label}
+                {c.icon && c.icon.length <= 4 ? `${c.icon} ` : ''}{c.name}
               </button>
             ))}
           </div>

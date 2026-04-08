@@ -1,30 +1,35 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import CitySync from './CitySync';
 import TopVendorCarousel from '@/components/home/TopVendorCarousel';
-import HeroTicker from '@/components/home/HeroTicker';
 import CategorySection from '@/components/home/CategorySection';
 import CTABanners from '@/components/home/CTABanners';
 import SEOContentBlock from '@/components/home/SEOContentBlock';
 import PlanWizard from '@/components/home/PlanWizard';
 import FeaturedPackages from '@/components/home/FeaturedPackages';
+import HeroTicker from '@/components/home/HeroTicker';
 import { StoreIcon, CalendarIcon, StarIcon, CheckCircleIcon, ClipboardIcon, RobotIcon } from '@/components/ui/Icon';
 
-export const metadata: Metadata = {
-  title: 'PlanToday — Plan Your Event in 2 Minutes | AI-Powered Vendor Matching',
-  description:
-    'Get a complete event plan with budget breakdown and top vendor recommendations in 2 minutes. Wedding, birthday, corporate events across India. 2000+ verified vendors.',
-  keywords: [
-    'event planning India', 'wedding plan budget', 'event vendor recommendations',
-    'birthday party plan', 'corporate event plan', 'wedding budget planner',
-    'event vendor matching', 'AI event planner India',
-  ],
-  alternates: { canonical: '/' },
-  openGraph: {
-    title: 'Plan Your Event in 2 Minutes — PlanToday',
-    description: 'Tell us your event type, budget & guests. Get a complete vendor plan instantly.',
-    type: 'website',
-  },
-};
+interface Props {
+  params: { city: string };
+}
+
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const cityName = params.city
+    .split('-')
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ');
+  return {
+    title: `Plan Your Event in ${cityName} — PlanToday`,
+    description: `Find top-rated wedding photographers, caterers, venues, DJs & decorators in ${cityName}. AI-powered vendor matching. Free quotes instantly.`,
+    alternates: { canonical: `/plan-event-in-${params.city}` },
+    openGraph: {
+      title: `Plan Your Event in ${cityName} — PlanToday`,
+      description: `2000+ verified vendors in ${cityName}. Free instant quotes, AI-powered matching.`,
+      type: 'website',
+    },
+  };
+}
 
 const STATS = [
   { value: '2,000+', label: 'Verified Vendors', Icon: StoreIcon },
@@ -51,61 +56,59 @@ const HOW_IT_WORKS = [
   },
 ];
 
-export default function HomePage() {
+export default function CityHomePage({ params }: Props) {
+  const citySlug = params.city;
+  const cityName = citySlug
+    .split('-')
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ');
+
   return (
     <main className="min-h-screen bg-gray-50 overflow-x-hidden">
 
+      {/* Sync city into Zustand store (client-side) */}
+      <CitySync citySlug={citySlug} />
+
       {/* ── HERO ─────────────────────────────────────────────────────── */}
       <section className="relative -mt-16 pt-16 min-h-[94vh] flex flex-col bg-gradient-to-br from-gray-950 via-red-950 to-gray-900 text-white overflow-hidden">
-        {/* Background layers */}
         <div className="hero-pattern absolute inset-0 opacity-40" />
         <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-gray-950/60" />
-
-        {/* Animated orbs */}
         <div className="absolute top-32 left-10 w-96 h-96 bg-red-600/15 rounded-full blur-3xl animate-float-slow pointer-events-none" />
         <div className="absolute bottom-32 right-8 w-80 h-80 bg-rose-500/10 rounded-full blur-3xl animate-float-medium pointer-events-none" />
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[700px] bg-red-900/10 rounded-full blur-3xl pointer-events-none" />
 
-        {/* Scrolling ticker — city-aware client component */}
         <HeroTicker />
 
-        {/* Hero content */}
         <div className="relative flex-1 flex flex-col items-center justify-center px-4 py-10 sm:py-14 text-center">
-
-          {/* Badge */}
           <div className="inline-flex items-center gap-2 bg-white/10 backdrop-blur-md rounded-full px-5 py-2 text-sm mb-6 border border-white/15 shadow-xl">
             <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
-            <span className="font-semibold text-white">India&apos;s #1 Event Planning Platform</span>
+            <span className="font-semibold text-white">Top Event Vendors in {cityName}</span>
             <span className="bg-red-500/30 text-red-300 text-xs font-bold px-2 py-0.5 rounded-full">AI ✦</span>
           </div>
 
-          {/* Headline */}
           <h1 className="text-4xl sm:text-6xl font-extrabold leading-tight mb-4 tracking-tight max-w-4xl">
             Plan Your Event
             <br />
-            <span className="gradient-text">in 2 Minutes.</span>
+            <span className="gradient-text">in {cityName}</span>
           </h1>
           <p className="text-gray-300 text-base sm:text-lg mb-8 max-w-xl leading-relaxed">
             Tell us your event type, budget &amp; guests —
             <br className="hidden sm:block" />
-            we&apos;ll build a complete <strong className="text-white">vendor plan with budget breakdown</strong>.
+            we&apos;ll match you with <strong className="text-white">top vendors in {cityName}</strong>.
           </p>
 
-          {/* PLAN WIZARD — main CTA */}
           <div className="w-full max-w-2xl mb-6">
             <PlanWizard />
           </div>
 
-          {/* Secondary: search link */}
           <p className="text-gray-400 text-sm">
             Just browsing?{' '}
-            <Link href="/search" className="text-white font-semibold hover:underline underline-offset-2">
-              Search vendors directly →
+            <Link href={`/search?city=${citySlug}`} className="text-white font-semibold hover:underline underline-offset-2">
+              Search vendors in {cityName} →
             </Link>
           </p>
         </div>
 
-        {/* Stats bar */}
         <div className="relative border-t border-white/10 bg-black/30 backdrop-blur-sm">
           <div className="max-w-5xl mx-auto px-4 py-5 grid grid-cols-4 gap-2">
             {STATS.map((s) => (

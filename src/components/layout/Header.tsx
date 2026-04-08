@@ -40,41 +40,91 @@ export default function Header() {
     return () => document.removeEventListener('mousedown', h);
   }, []);
 
-  /** Auto-detect: get coords → find nearest city in our DB list */
-  const detectCity = useCallback(() => {
-    if (!navigator?.geolocation) return;
-    setGeoLoading(true);
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const { latitude, longitude } = pos.coords;
-        // Find closest city by Euclidean distance on lat/lng
-        let closest: City | null = null;
-        let minDist = Infinity;
-        cities.forEach((c: any) => {
-          if (c.latitude && c.longitude) {
-            const d = Math.hypot(c.latitude - latitude, c.longitude - longitude);
-            if (d < minDist) { minDist = d; closest = c; }
-          }
-        });
-        if (closest) pickCity(closest);
-        setGeoLoading(false);
-      },
-      () => setGeoLoading(false),
-      { timeout: 8000 },
-    );
-  }, [cities]);
-
-  /** Select city, persist to store, optionally redirect */
-  const pickCity = useCallback((city: City | null) => {
+  /** Select city, persist to store, redirect to city home page.
+   *  forceRedirect=true → always redirects (used by auto-detect).
+   *  Without forceRedirect → only redirects from / and /plan-event-in-* pages.
+   */
+  const pickCity = useCallback((city: City | null, forceRedirect = false) => {
     setSelectedCity(city);
     setCityOpen(false);
     setCitySearch('');
     setMobileOpen(false);
-    // On homepage or city pages — navigate to city-specific home page
-    if (city && (pathname === '/' || pathname?.startsWith('/plan-event-in-'))) {
+    if (city && (forceRedirect || pathname === '/' || pathname?.startsWith('/plan-event-in-'))) {
       router.push(`/plan-event-in-${city.slug}`);
     }
   }, [pathname, router, setSelectedCity]);
+
+  /** Find nearest city in our DB list by Euclidean lat/lng distance */
+  const findClosestCity = useCallback((lat: number, lng: number): City | null => {
+    let closest: City | null = null;
+    let minDist = Infinity;
+    for (const c of cities) {
+      const clat = Number(c.latitude);
+      const clng = Number(c.longitude);
+      if (!clat || !clng) continue;
+      const d = Math.hypot(clat - lat, clng - lng);
+      if (d < minDist) { minDist = d; closest = c; }
+    }
+    return closest;
+  }, [cities]);
+
+  /** Auto-detect city:
+   *  1. Try browser geolocation (accurate, needs permission)
+   *  2. Fall back to IP geolocation (no permission, less precise)
+   *  Always redirects to /plan-event-in-{city} on success.
+   */
+  const detectCity = useCallback(async () => {
+    if (!cities.length) return;
+    setGeoLoading(true);
+
+    // ── Step 1: browser geolocation ─────────────────────────────────
+    if (typeof window !== 'undefined' && navigator?.geolocation) {
+      try {
+        const pos = await new Promise<GeolocationPosition>((resolve, reject) =>
+          navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 6000 }),
+        );
+        const found = findClosestCity(pos.coords.latitude, pos.coords.longitude);
+        if (found) {
+          setGeoLoading(false);
+          pickCity(found, true);
+          return;
+        }
+      } catch {
+        // Permission denied or timeout — fall through to IP lookup
+      }
+    }
+
+    // ── Step 2: IP-based geolocation (no permission needed) ─────────
+    try {
+      const res  = await fetch('https://ip-api.com/json/?fields=status,city,lat,lon', { cache: 'no-store' });
+      const data = await res.json();
+      if (data.status === 'success') {
+        // Name match first (most reliable)
+        const nameMatch = cities.find((c) =>
+          c.name.toLowerCase() === data.city?.toLowerCase() ||
+          c.slug === data.city?.toLowerCase().replace(/\s+/g, '-'),
+        );
+        if (nameMatch) {
+          setGeoLoading(false);
+          pickCity(nameMatch, true);
+          return;
+        }
+        // Distance fallback if IP coords available
+        if (data.lat && data.lon) {
+          const distMatch = findClosestCity(data.lat, data.lon);
+          if (distMatch) {
+            setGeoLoading(false);
+            pickCity(distMatch, true);
+            return;
+          }
+        }
+      }
+    } catch {
+      // IP lookup failed silently
+    }
+
+    setGeoLoading(false);
+  }, [cities, findClosestCity, pickCity]);
 
   // Lock body scroll when mobile menu is open
   useEffect(() => {

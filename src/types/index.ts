@@ -3,6 +3,8 @@ export interface City {
   name: string;
   slug: string;
   state?: string;
+  latitude?: number | string | null;
+  longitude?: number | string | null;
 }
 
 export interface Locality {

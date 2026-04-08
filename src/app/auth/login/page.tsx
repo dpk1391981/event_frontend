@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { authApi } from '@/lib/api';
 import { useAppStore } from '@/store/useAppStore';
 import { LogoMark, CheckIcon, ChevronLeftIcon, WarningIcon } from '@/components/ui/Icon';
+import type { User } from '@/store/useAppStore';
 
 type Step = 'phone' | 'otp' | 'profile';
 const STEPS: Step[] = ['phone', 'otp', 'profile'];
@@ -71,7 +72,7 @@ export default function LoginPage() {
     try {
       const res = await authApi.verifyOtp(phone, otp) as unknown as {
         token: string;
-        user: { id: number; name?: string; role: 'user' | 'vendor' | 'admin' | 'super_admin' };
+        user: User;
         isNewUser: boolean;
       };
       setToken(res.token); setUser(res.user);
@@ -89,9 +90,7 @@ export default function LoginPage() {
     e.preventDefault();
     setLoading(true); setError('');
     try {
-      const res = await authApi.updateProfile({ name, role }) as unknown as {
-        user: { id: number; name: string; role: string };
-      };
+      const res = await authApi.updateProfile({ name, role }) as unknown as { user: User };
       setUser(res.user);
       router.push(role === 'vendor' ? '/partner/onboard' : '/');
     } catch (err: unknown) {

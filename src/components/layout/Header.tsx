@@ -260,7 +260,7 @@ export default function Header() {
               {[
                 { href: '/search',                  label: 'Find Vendors',      Icon: SearchIcon },
                 { href: '/plan',                    label: 'Plan My Event',     Icon: ClipboardIcon },
-                { href: '/search?category=wedding', label: 'Wedding Vendors',   Icon: WeddingIcon },
+                { href: '/wedding-planners-in-delhi', label: 'Wedding Vendors',   Icon: WeddingIcon },
                 { href: '/partner/onboard',         label: 'List Your Business',Icon: StoreIcon },
               ].map((item) => (
                 <Link

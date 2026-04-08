@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import { Vendor } from '@/types';
+import { buildSeoUrl } from '@/lib/seo-urls';
 
 function Stars({ r, count }: { r: number; count: number }) {
   return (
@@ -108,13 +109,19 @@ export default function VendorListCard({ vendor, rank, onGetQuote }: Props) {
               {/* Categories */}
               {vendor.categories && vendor.categories.length > 0 && (
                 <div className="flex flex-wrap gap-1.5 mb-2">
-                  {vendor.categories.map((c) => (
-                    <Link key={c.id} href={`/search?category=${c.slug}`}>
-                      <span className="text-xs font-semibold text-red-600 bg-red-50 px-2 py-0.5 rounded-full hover:bg-red-100 transition">
-                        {c.name}
-                      </span>
-                    </Link>
-                  ))}
+                  {vendor.categories.map((c) => {
+                    const citySlug = vendor.city?.slug;
+                    const href = citySlug
+                      ? buildSeoUrl(c.slug, citySlug)
+                      : `/search?q=${encodeURIComponent(c.name)}&nlp=1`;
+                    return (
+                      <Link key={c.id} href={href}>
+                        <span className="text-xs font-semibold text-red-600 bg-red-50 px-2 py-0.5 rounded-full hover:bg-red-100 transition">
+                          {c.name}
+                        </span>
+                      </Link>
+                    );
+                  })}
                 </div>
               )}
             </div>

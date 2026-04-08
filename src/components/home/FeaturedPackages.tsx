@@ -70,7 +70,7 @@ export default function FeaturedPackages() {
             </p>
           </div>
           <Link
-            href="/search?tab=packages"
+            href="/search?q=packages+near+me&nlp=1"
             className="hidden sm:inline-flex items-center gap-1.5 rounded-2xl border border-[#e8dbc9] bg-white px-4 py-2.5 text-sm font-semibold text-[#111827] hover:bg-[#f7f2eb] whitespace-nowrap"
           >
             View all packages →
@@ -81,7 +81,7 @@ export default function FeaturedPackages() {
           {packages.map((pkg) => (
             <Link
               key={pkg.id}
-              href={`/search?packageId=${pkg.id}`}
+              href={pkg.vendor?.slug ? `/vendor/${pkg.vendor.slug}` : '/search?q=packages+near+me&nlp=1'}
               className="group rounded-[20px] border border-[#e8dbc9] bg-white p-5 shadow-sm hover:shadow-md hover:border-red-200 transition-all"
             >
               {/* Category + boost badge */}
@@ -139,7 +139,7 @@ export default function FeaturedPackages() {
 
         <div className="mt-6 text-center sm:hidden">
           <Link
-            href="/search?tab=packages"
+            href="/search?q=packages+near+me&nlp=1"
             className="inline-flex items-center gap-1.5 rounded-2xl border border-[#e8dbc9] bg-white px-5 py-3 text-sm font-semibold text-[#111827]"
           >
             View all packages →

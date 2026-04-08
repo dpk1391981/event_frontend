@@ -6,6 +6,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { searchApi, locationsApi, categoriesApi } from '@/lib/api';
 import { City, Category, EventPlan, Vendor } from '@/types';
+import { CATEGORY_TO_SEO } from '@/lib/seo-urls';
 import LeadModal from '@/components/lead/LeadModal';
 
 // ─── UI-only constants (visual/text, not data) ────────────────────────────────
@@ -54,6 +55,31 @@ const RANK_BADGES = [
   { label: '#3 Pick', cls: 'bg-orange-200 text-orange-800' },
 ];
 
+/** Per-event-type gradient + accent config — wedding gets rose/gold warmth */
+const EVENT_THEMES: Record<string, {
+  heroFrom: string; heroVia: string; heroTo: string;
+  glowA: string; glowB: string;
+  accentText: string; badgeLabel: string; dotsBg: string;
+}> = {
+  wedding:   { heroFrom: 'from-rose-950',   heroVia: 'via-pink-950',   heroTo: 'to-red-900',   glowA: 'rgba(244,63,94,0.45)',  glowB: 'rgba(251,113,133,0.25)', accentText: 'text-rose-300',   badgeLabel: '💍 Wedding Plan',   dotsBg: 'bg-rose-500/20' },
+  birthday:  { heroFrom: 'from-purple-950', heroVia: 'via-violet-950', heroTo: 'to-indigo-900',glowA: 'rgba(139,92,246,0.4)',  glowB: 'rgba(167,139,250,0.2)', accentText: 'text-purple-300', badgeLabel: '🎂 Birthday Plan',  dotsBg: 'bg-purple-500/20' },
+  corporate: { heroFrom: 'from-blue-950',   heroVia: 'via-slate-950',  heroTo: 'to-indigo-900',glowA: 'rgba(59,130,246,0.35)', glowB: 'rgba(99,102,241,0.2)',  accentText: 'text-blue-300',   badgeLabel: '💼 Corporate Plan', dotsBg: 'bg-blue-500/20' },
+  default:   { heroFrom: 'from-gray-950',   heroVia: 'via-red-950',    heroTo: 'to-gray-900',  glowA: 'rgba(239,68,68,0.4)',   glowB: 'rgba(251,113,133,0.2)', accentText: 'text-red-300',    badgeLabel: '🎉 Event Plan',     dotsBg: 'bg-red-500/20' },
+};
+
+function getEventTheme(slug: string) {
+  return EVENT_THEMES[slug] ?? EVENT_THEMES.default;
+}
+
+/** Budget tier meta — what does the budget tier *mean* for the user */
+function getBudgetTier(budget: number, eventType: string) {
+  const isWedding = eventType === 'wedding';
+  if (budget < 50000)   return { tier: 'Essential',    icon: '🌱', desc: isWedding ? 'Small intimate ceremony' : 'Core services covered',               color: 'text-emerald-700', bg: 'bg-emerald-50',  border: 'border-emerald-200' };
+  if (budget < 150000)  return { tier: 'Comfortable',  icon: '🌟', desc: isWedding ? 'Covers most wedding essentials' : 'Solid multi-service coverage',    color: 'text-blue-700',   bg: 'bg-blue-50',     border: 'border-blue-200' };
+  if (budget < 500000)  return { tier: 'Premium',      icon: '💎', desc: isWedding ? 'Full coverage — quality vendors for every service' : 'Premium multi-vendor plan', color: 'text-purple-700', bg: 'bg-purple-50',   border: 'border-purple-200' };
+  return                       { tier: 'Grand',         icon: '👑', desc: isWedding ? 'Luxury wedding — best-in-class vendors' : 'All-inclusive top-tier event',color: 'text-yellow-700', bg: 'bg-yellow-50',   border: 'border-yellow-200' };
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type CatStyle = (typeof CAT_PALETTE)[number];
@@ -70,14 +96,18 @@ const fmtFull = (n: number) => `₹${n.toLocaleString('en-IN')}`;
 const budgetFits = (v: Vendor, alloc: number) =>
   !Number(v.minPrice) || Number(v.minPrice) <= alloc;
 
-/** Composite match score: budgetFit 40% · profileScore 35% · rating 25% */
+/**
+ * Composite match score: budgetFit 50% · rating 30% · profileScore 20%
+ * Uses backend-pre-computed score when available to stay in sync with server logic.
+ */
 function matchScore(v: Vendor, alloc: number): number {
+  if (typeof v.matchScore === 'number') return v.matchScore;
   const min = Number(v.minPrice) || 0;
   const max = Number(v.maxPrice) || 0;
   let bf = 50;
   if (min && max)  bf = min <= alloc && max >= alloc * 0.5 ? 100 : min <= alloc ? 80 : Math.max(0, 100 - ((min - alloc) / alloc) * 80);
   else if (min)    bf = min <= alloc ? 80 : Math.max(0, 100 - ((min - alloc) / alloc) * 80);
-  return Math.round(bf * 0.40 + (Number(v.profileScore) || 0) * 0.35 + (Number(v.rating) / 5 * 100) * 0.25);
+  return Math.min(100, Math.round(bf * 0.50 + (Number(v.rating) / 5 * 100) * 0.30 + (Number(v.profileScore) || 0) * 0.20));
 }
 
 /** Deterministic palette slot for a category slug (same slug → same colour always) */
@@ -159,12 +189,29 @@ function PlanHero({
   const eventName = eventCat?.name || form.eventType.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
   const cats = plan.plan.filter(p => p.category !== 'misc');
   const totalVendors = cats.reduce((s, c) => s + c.vendors.length, 0);
+  const theme = getEventTheme(form.eventType);
+  const budgetTier = getBudgetTier(Number(form.budget), form.eventType);
 
   return (
-    <div className="relative bg-gradient-to-br from-gray-950 via-red-950 to-gray-900 rounded-2xl overflow-hidden">
+    <div className={`relative bg-gradient-to-br ${theme.heroFrom} ${theme.heroVia} ${theme.heroTo} rounded-2xl overflow-hidden`}>
+      {/* Decorative confetti dots for wedding */}
+      {form.eventType === 'wedding' && (
+        <div className="absolute inset-0 overflow-hidden pointer-events-none">
+          {[...Array(18)].map((_, i) => (
+            <div key={i} className={`absolute w-1.5 h-1.5 rounded-full ${theme.dotsBg}`}
+              style={{ top: `${10 + (i * 17 + i * 3) % 80}%`, left: `${5 + (i * 23 + i * 7) % 90}%`, opacity: 0.6 }} />
+          ))}
+        </div>
+      )}
       <div className="absolute inset-0 opacity-30" style={{
-        backgroundImage: 'radial-gradient(circle at 15% 50%, rgba(239,68,68,0.4) 0%, transparent 55%), radial-gradient(circle at 85% 20%, rgba(251,113,133,0.2) 0%, transparent 50%)',
+        backgroundImage: `radial-gradient(circle at 15% 50%, ${theme.glowA} 0%, transparent 55%), radial-gradient(circle at 85% 20%, ${theme.glowB} 0%, transparent 50%)`,
       }} />
+      {/* Budget tier ribbon */}
+      <div className={`absolute top-0 right-0 px-4 py-1.5 rounded-bl-2xl rounded-tr-2xl ${budgetTier.bg} border-b border-l ${budgetTier.border}`}>
+        <span className={`text-[10px] font-extrabold uppercase tracking-widest ${budgetTier.color}`}>
+          {budgetTier.icon} {budgetTier.tier} Budget
+        </span>
+      </div>
 
       <div className="relative px-5 pt-5 pb-4">
         {/* Top row */}
@@ -177,13 +224,24 @@ function PlanHero({
               <span className="text-xs font-bold bg-white/10 text-white/70 rounded-full px-3 py-1">
                 {totalVendors} vendors matched
               </span>
+              {plan.summary?.confidenceScore > 0 && (
+                <span className={`text-xs font-bold rounded-full px-3 py-1 ${
+                  plan.summary.confidenceScore >= 75
+                    ? 'bg-green-500/20 text-green-300'
+                    : plan.summary.confidenceScore >= 50
+                    ? 'bg-yellow-500/20 text-yellow-300'
+                    : 'bg-white/10 text-white/50'
+                }`}>
+                  {plan.summary.confidenceScore}% confidence
+                </span>
+              )}
             </div>
             <h1 className="text-xl sm:text-2xl font-extrabold text-white leading-tight">
               {eventIcon} {eventName}
               {cityName && <span className="text-white/70"> in {cityName}</span>}
             </h1>
             <div className="flex flex-wrap gap-2 mt-2">
-              <span className="text-sm font-bold text-red-300">{fmtFull(plan.totalBudget)}</span>
+              <span className={`text-sm font-bold ${theme.accentText}`}>{fmtFull(plan.totalBudget)}</span>
               {plan.guestCount && <span className="text-sm text-white/60">· {plan.guestCount} guests</span>}
               <span className="text-sm text-white/60">· {cats.length} categories</span>
             </div>
@@ -255,9 +313,6 @@ function TrustBar() {
 function SmartSummary({ plan, cityName, catMap }: { plan: EventPlan; cityName?: string; catMap: Map<string, Category> }) {
   const cats = plan.plan.filter(p => p.category !== 'misc');
   const totalVendors = cats.reduce((s, c) => s + c.vendors.length, 0);
-  const avgScore = cats
-    .flatMap(c => c.vendors.map(v => matchScore(v, c.allocatedBudget)))
-    .reduce((s, x, _, a) => s + x / a.length, 0);
 
   const categoriesFound = cats.filter(c => c.vendors.length > 0).length;
   const coveredNames = cats
@@ -266,10 +321,34 @@ function SmartSummary({ plan, cityName, catMap }: { plan: EventPlan; cityName?: 
     .map(c => catMap.get(c.category)?.name || c.category)
     .join(', ');
 
+  // Prefer server-computed confidence score; fall back to client average
+  const confidenceScore = plan.summary?.confidenceScore
+    ?? Math.round(cats.flatMap(c => c.vendors.map(v => matchScore(v, c.allocatedBudget))).reduce((s, x, _, a) => s + x / a.length, 0));
+
+  // Prefer server-computed estimated total
+  const estimatedTotal = plan.summary?.estimatedTotal ?? 0;
+  const withinBudget = plan.summary?.withinBudget ?? true;
+
   const points = [
-    { icon: '🎯', text: `${totalVendors} vendors matched`,    sub: coveredNames || 'All within your price range' },
-    { icon: '📍', text: `Optimised for ${cityName || 'your city'}`, sub: 'Hyperlocal results only' },
-    { icon: '⭐', text: `${Math.round(avgScore)}% avg match`,  sub: `${categoriesFound} of ${cats.length} categories covered` },
+    {
+      icon: '🎯',
+      text: `${totalVendors} vendors matched`,
+      sub: coveredNames || 'All within your price range',
+    },
+    {
+      icon: '📍',
+      text: `Optimised for ${cityName || 'your city'}`,
+      sub: 'Hyperlocal results only',
+    },
+    {
+      icon: estimatedTotal > 0 ? (withinBudget ? '✅' : '⚠️') : '⭐',
+      text: estimatedTotal > 0
+        ? `Est. total: ${fmtFull(estimatedTotal)}`
+        : `${confidenceScore}% avg match`,
+      sub: estimatedTotal > 0
+        ? (withinBudget ? 'Within your budget' : 'Slightly over — negotiate for better rates')
+        : `${categoriesFound} of ${cats.length} categories covered`,
+    },
   ];
 
   return (
@@ -287,15 +366,54 @@ function SmartSummary({ plan, cityName, catMap }: { plan: EventPlan; cityName?: 
   );
 }
 
+// ─── 4b. Budget Insight Card ──────────────────────────────────────────────────
+
+function BudgetInsightCard({ budget, eventType, cityName }: { budget: number; eventType: string; cityName?: string }) {
+  const tier = getBudgetTier(budget, eventType);
+  const isWedding = eventType === 'wedding';
+  const tips = isWedding
+    ? ['Allocate 30-40% to venue & catering', 'Book photographers 3+ months in advance', 'Negotiate bundle deals across vendors']
+    : ['Compare 2-3 vendors per category', 'Get quotes before finalizing budget', 'Ask about off-season discounts'];
+
+  return (
+    <div className={`rounded-2xl border ${tier.border} ${tier.bg} overflow-hidden`}>
+      <div className="px-5 py-4 flex items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-xl ${tier.bg} border ${tier.border}`}>
+            {tier.icon}
+          </div>
+          <div>
+            <p className={`text-xs font-extrabold uppercase tracking-widest ${tier.color}`}>{tier.tier} Tier</p>
+            <p className="text-sm font-bold text-gray-800">{tier.desc}</p>
+          </div>
+        </div>
+        {cityName && (
+          <span className={`hidden sm:block text-xs font-semibold ${tier.color} shrink-0`}>
+            📍 {cityName}
+          </span>
+        )}
+      </div>
+      <div className={`px-5 pb-4 flex flex-wrap gap-x-4 gap-y-1`}>
+        {tips.map(t => (
+          <span key={t} className={`text-[11px] font-semibold ${tier.color} flex items-center gap-1`}>
+            <span>→</span> {t}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ─── 5. Recommended Package ───────────────────────────────────────────────────
 
 function RecommendedPackage({
-  plan, catMap, onGetQuote, onGetAll,
+  plan, catMap, onGetQuote, onGetAll, eventType,
 }: {
   plan: EventPlan;
   catMap: Map<string, Category>;
   onGetQuote: (v: Vendor) => void;
   onGetAll: (vendors: Vendor[]) => void;
+  eventType?: string;
 }) {
   const picks = plan.plan
     .filter(i => i.vendors.length > 0 && i.category !== 'misc')
@@ -303,21 +421,50 @@ function RecommendedPackage({
 
   if (picks.length === 0) return null;
 
-  const estimatedTotal = picks.reduce((s, p) => s + (Number(p.top.minPrice) || 0), 0);
-  const allVendors     = picks.map(p => p.top);
-  const withinBudget   = estimatedTotal <= plan.totalBudget;
+  const estimatedTotal = plan.summary?.estimatedTotal
+    ?? picks.reduce((s, p) => s + (p.top.priceEstimate || Number(p.top.minPrice) || 0), 0);
+  const allVendors   = picks.map(p => p.top);
+  const withinBudget = plan.summary?.withinBudget ?? estimatedTotal <= plan.totalBudget;
+  const savings      = withinBudget && estimatedTotal > 0 ? plan.totalBudget - estimatedTotal : 0;
+  const isWedding    = eventType === 'wedding';
+  const theme        = getEventTheme(eventType || 'default');
 
   return (
     <div className="rounded-2xl overflow-hidden border border-gray-800 shadow-xl">
       {/* Header */}
-      <div className="bg-gray-950 px-5 py-4">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2 mb-2">
-              <span className="text-[10px] font-extrabold bg-red-600 text-white rounded-full px-2.5 py-0.5 uppercase tracking-wide">AI Curated</span>
-              <span className="text-[10px] text-white/40 font-semibold">Best combo for your budget</span>
+      <div className={`bg-gradient-to-br ${theme.heroFrom} ${theme.heroVia} ${theme.heroTo} px-5 pt-5 pb-0`}>
+        {/* Vendor avatar row */}
+        <div className="flex items-center gap-2 mb-4">
+          <div className="flex -space-x-2">
+            {picks.slice(0, 5).map(({ top }, i) => (
+              <div key={top.id} className="w-9 h-9 rounded-full border-2 border-white/20 overflow-hidden bg-white/10 flex items-center justify-center text-sm font-bold text-white relative"
+                style={{ zIndex: 10 - i }}>
+                {top.portfolioImages?.[0]
+                  ? <Image src={top.portfolioImages[0]} alt={top.businessName} fill sizes="36px" className="object-cover" />
+                  : top.businessName[0]}
+              </div>
+            ))}
+            {picks.length > 5 && (
+              <div className="w-9 h-9 rounded-full border-2 border-white/20 bg-white/10 flex items-center justify-center text-[10px] font-bold text-white/70">
+                +{picks.length - 5}
+              </div>
+            )}
+          </div>
+          <div className="ml-1">
+            <div className="flex items-center gap-1.5">
+              <span className={`text-[10px] font-extrabold ${isWedding ? 'bg-rose-500' : 'bg-red-600'} text-white rounded-full px-2.5 py-0.5 uppercase tracking-wide`}>
+                {isWedding ? '💍 Dream Package' : 'AI Curated'}
+              </span>
+              <span className="text-[10px] text-white/40 font-semibold">{picks.length} vendors · best combo for your budget</span>
             </div>
-            <h2 className="text-white font-extrabold text-lg leading-tight">Recommended Package</h2>
+          </div>
+        </div>
+
+        <div className="flex items-end justify-between gap-4 pb-4">
+          <div>
+            <h2 className="text-white font-extrabold text-lg leading-tight">
+              {isWedding ? 'Your Dream Wedding Package' : 'Recommended Package'}
+            </h2>
             <p className="text-white/40 text-xs mt-0.5">Top vendor from each category — ranked by budget fit + rating</p>
           </div>
           {estimatedTotal > 0 && (
@@ -325,7 +472,9 @@ function RecommendedPackage({
               <p className="text-white/40 text-[10px] mb-0.5">Estimated total</p>
               <p className="text-white font-extrabold text-xl">{fmt(estimatedTotal)}</p>
               <p className={`text-[10px] font-bold mt-0.5 ${withinBudget ? 'text-green-400' : 'text-amber-400'}`}>
-                {withinBudget ? '✓ Within your budget' : '⚠ Slightly over budget'}
+                {withinBudget
+                  ? savings > 0 ? `✓ Saves you ${fmt(savings)}` : '✓ Within your budget'
+                  : '⚠ Slightly over budget'}
               </p>
             </div>
           )}
@@ -346,14 +495,16 @@ function RecommendedPackage({
                 <Link href={`/vendor/${top.slug}`} className="text-sm font-extrabold text-gray-900 hover:text-red-700 transition line-clamp-1">
                   {top.businessName}
                 </Link>
-                <p className="text-xs text-gray-400 mt-0.5">
-                  {top.city?.name}
-                  {Number(top.rating) > 0 && <span className="ml-2 text-yellow-500 font-bold">★ {Number(top.rating).toFixed(1)}</span>}
-                  <span className="ml-2 text-green-600 font-bold">{score}% match</span>
+                <p className="text-xs text-gray-400 mt-0.5 flex items-center gap-2 flex-wrap">
+                  {top.city?.name && <span>{top.city.name}</span>}
+                  {Number(top.rating) > 0 && <span className="text-yellow-500 font-bold">★ {Number(top.rating).toFixed(1)}</span>}
+                  <span className={`font-bold ${score >= 80 ? 'text-green-600' : score >= 60 ? 'text-blue-600' : 'text-gray-500'}`}>{score}% match</span>
                 </p>
               </div>
-              {top.minPrice && (
-                <p className="text-sm font-extrabold text-gray-800 shrink-0 hidden sm:block">{fmt(Number(top.minPrice))}</p>
+              {(top.priceEstimate || top.minPrice) && (
+                <p className="text-sm font-extrabold text-gray-800 shrink-0 hidden sm:block">
+                  {fmt(top.priceEstimate || Number(top.minPrice))}
+                </p>
               )}
               <button
                 onClick={() => onGetQuote(top)}
@@ -367,13 +518,16 @@ function RecommendedPackage({
       </div>
 
       {/* CTA footer */}
-      <div className="bg-gradient-to-r from-red-600 to-rose-700 px-5 py-3.5 flex items-center justify-between gap-4">
-        <p className="text-white/80 text-xs">Get quotes from all {picks.length} recommended vendors at once</p>
+      <div className={`bg-gradient-to-r ${isWedding ? 'from-rose-600 to-pink-700' : 'from-red-600 to-rose-700'} px-5 py-3.5 flex items-center justify-between gap-4`}>
+        <div>
+          <p className="text-white/90 text-xs font-semibold">Get quotes from all {picks.length} vendors at once</p>
+          {savings > 0 && <p className="text-white/60 text-[10px] mt-0.5">Potential savings: {fmt(savings)} vs. top-range pricing</p>}
+        </div>
         <button
           onClick={() => onGetAll(allVendors)}
           className="shrink-0 bg-white text-red-700 font-extrabold text-sm px-5 py-2.5 rounded-xl hover:bg-red-50 transition shadow-md whitespace-nowrap"
         >
-          Get Full Plan Quote →
+          {isWedding ? 'Book Dream Package →' : 'Get Full Plan Quote →'}
         </button>
       </div>
     </div>
@@ -430,35 +584,47 @@ function VendorCard({
   const score = matchScore(vendor, allocatedBudget);
   const minP  = Number(vendor.minPrice) || 0;
   const maxP  = Number(vendor.maxPrice) || 0;
-  const priceStr = minP && maxP
+  const priceStr = vendor.priceEstimate
+    ? `Est. ${fmt(vendor.priceEstimate)}`
+    : minP && maxP
     ? `₹${(minP / 1000).toFixed(0)}K – ₹${(maxP / 1000).toFixed(0)}K`
     : minP ? `From ₹${(minP / 1000).toFixed(0)}K` : null;
-  const rb = RANK_BADGES[rank - 1];
+  const rb        = RANK_BADGES[rank - 1];
+  const scoreColor = score >= 85 ? 'text-green-400' : score >= 65 ? 'text-blue-300' : 'text-gray-300';
+  const isTopPick  = rank === 1;
 
   return (
     <div className={`rounded-2xl border-2 overflow-hidden transition-all duration-200 flex-shrink-0 w-[85vw] sm:w-auto snap-start bg-white ${
-      isShortlisted ? 'border-red-400 shadow-lg shadow-red-100/60' : 'border-gray-100 hover:border-gray-200 hover:shadow-md'
+      isShortlisted
+        ? 'border-rose-400 shadow-lg shadow-rose-100/60 ring-2 ring-rose-200'
+        : isTopPick
+        ? 'border-yellow-300 shadow-md shadow-yellow-50'
+        : 'border-gray-100 hover:border-gray-200 hover:shadow-md'
     }`}>
       {/* Image area */}
-      <div className="relative h-40 bg-gradient-to-br from-gray-100 to-gray-200 overflow-hidden group">
+      <div className="relative h-44 bg-gradient-to-br from-gray-100 to-gray-200 overflow-hidden group">
         {vendor.portfolioImages?.[0] ? (
           <Image
             src={vendor.portfolioImages[0]} alt={vendor.businessName} fill
-            className="object-cover group-hover:scale-105 transition-transform duration-300"
+            className="object-cover group-hover:scale-105 transition-transform duration-500"
           />
         ) : (
-          <div className="absolute inset-0 bg-gradient-to-br from-red-50 via-rose-50 to-pink-100 flex items-center justify-center">
-            <span className="text-5xl font-extrabold text-red-200 select-none">{vendor.businessName[0]}</span>
+          <div className="absolute inset-0 bg-gradient-to-br from-rose-50 via-pink-50 to-red-100 flex items-center justify-center">
+            <span className="text-5xl font-extrabold text-rose-200 select-none">{vendor.businessName[0]}</span>
           </div>
         )}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent" />
 
-        {rb && <span className={`absolute top-2 left-2 text-[10px] font-extrabold px-2 py-0.5 rounded-full shadow-sm ${rb.cls}`}>{rb.label}</span>}
+        {rb && (
+          <span className={`absolute top-2 left-2 text-[10px] font-extrabold px-2.5 py-1 rounded-full shadow-sm backdrop-blur-sm ${rb.cls}`}>
+            {rb.label}
+          </span>
+        )}
 
         <button
           onClick={() => onToggle(vendor)}
-          className={`absolute top-2 right-2 w-7 h-7 rounded-full flex items-center justify-center transition shadow-md ${
-            isShortlisted ? 'bg-red-500 text-white scale-110' : 'bg-white/80 backdrop-blur-sm text-gray-400 hover:text-red-500'
+          className={`absolute top-2 right-2 w-8 h-8 rounded-full flex items-center justify-center transition shadow-md ${
+            isShortlisted ? 'bg-rose-500 text-white scale-110' : 'bg-white/80 backdrop-blur-sm text-gray-400 hover:text-rose-500 hover:scale-110'
           }`}
         >
           <svg className="w-4 h-4" fill={isShortlisted ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
@@ -466,8 +632,14 @@ function VendorCard({
           </svg>
         </button>
 
-        <div className="absolute bottom-2 right-2 bg-black/60 backdrop-blur-sm rounded-full px-2 py-0.5 text-[10px] font-extrabold text-white">
-          {score}% match
+        {/* Score pill at bottom */}
+        <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between">
+          {vendor.isVerified && (
+            <span className="bg-green-500/90 backdrop-blur-sm text-white text-[9px] font-extrabold px-2 py-0.5 rounded-full">✓ Verified</span>
+          )}
+          <div className={`ml-auto bg-black/70 backdrop-blur-sm rounded-full px-2.5 py-1 text-[10px] font-extrabold ${scoreColor}`}>
+            {score}% match
+          </div>
         </div>
       </div>
 
@@ -475,9 +647,9 @@ function VendorCard({
       <div className="p-3.5">
         <div className="flex items-start justify-between gap-2 mb-1">
           <Link href={`/vendor/${vendor.slug}`}>
-            <h4 className="text-sm font-extrabold text-gray-900 hover:text-red-700 transition line-clamp-1">{vendor.businessName}</h4>
+            <h4 className="text-sm font-extrabold text-gray-900 hover:text-red-700 transition line-clamp-1 leading-snug">{vendor.businessName}</h4>
           </Link>
-          {priceStr && <span className="text-xs font-extrabold text-gray-800 shrink-0">{priceStr}</span>}
+          {priceStr && <span className="text-xs font-extrabold text-gray-800 shrink-0 ml-1">{priceStr}</span>}
         </div>
 
         <p className="text-xs text-gray-400 mb-2 flex items-center gap-1">
@@ -491,7 +663,7 @@ function VendorCard({
           <div className="flex items-center gap-1 mb-2.5">
             <div className="flex">
               {[1, 2, 3, 4, 5].map(s => (
-                <svg key={s} className={`w-3 h-3 ${s <= Math.round(Number(vendor.rating)) ? 'text-yellow-400' : 'text-gray-200'}`} fill="currentColor" viewBox="0 0 20 20">
+                <svg key={s} className={`w-3.5 h-3.5 ${s <= Math.round(Number(vendor.rating)) ? 'text-yellow-400' : 'text-gray-200'}`} fill="currentColor" viewBox="0 0 20 20">
                   <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
                 </svg>
               ))}
@@ -501,27 +673,35 @@ function VendorCard({
           </div>
         )}
 
+        {vendor.reason && (
+          <p className="text-[10px] text-blue-700 bg-blue-50 border border-blue-100 px-2.5 py-1.5 rounded-xl mb-2.5 leading-relaxed">
+            💡 {vendor.reason}
+          </p>
+        )}
+
         <div className="flex flex-wrap gap-1 mb-3">
           {fits && (
             <span className="text-[10px] font-extrabold bg-green-100 text-green-700 px-2 py-0.5 rounded-full">
-              ✓ Best fit for {fmt(allocatedBudget)}
+              ✓ Fits {fmt(allocatedBudget)}
             </span>
           )}
           {vendor.isFeatured && (
-            <span className="text-[10px] font-extrabold bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">Featured</span>
+            <span className="text-[10px] font-extrabold bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">⭐ Featured</span>
           )}
           {Number(vendor.rating) >= 4.5 && (
-            <span className="text-[10px] font-extrabold bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full">Top Rated</span>
+            <span className="text-[10px] font-extrabold bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full">🏆 Top Rated</span>
           )}
         </div>
 
         <div className="grid grid-cols-2 gap-2">
           <Link href={`/vendor/${vendor.slug}`} className="text-center text-xs font-bold border-2 border-gray-100 text-gray-600 py-2 rounded-xl hover:border-red-300 hover:text-red-600 transition">
-            View Details
+            View Profile
           </Link>
           <button
             onClick={() => onGetQuote(vendor)}
-            className="text-xs font-extrabold bg-red-600 text-white py-2 rounded-xl hover:bg-red-700 transition shadow-sm"
+            className={`text-xs font-extrabold py-2 rounded-xl transition shadow-sm ${
+              isTopPick ? 'bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-700 hover:to-rose-700 text-white' : 'bg-red-600 hover:bg-red-700 text-white'
+            }`}
           >
             Get Quote
           </button>
@@ -534,15 +714,20 @@ function VendorCard({
 // ─── 8. Category Section ──────────────────────────────────────────────────────
 
 function CategorySection({
-  item, catMap, shortlist, onToggle, onGetQuote,
+  item, catMap, shortlist, onToggle, onGetQuote, citySlug,
 }: {
   item: EventPlan['plan'][0];
   catMap: Map<string, Category>;
   shortlist: Vendor[];
   onToggle: (v: Vendor) => void;
   onGetQuote: (v: Vendor) => void;
+  citySlug?: string;
 }) {
   const m = getCatMeta(item.category, catMap);
+  // Prefer SEO URL when city is known; fall back to NLP search
+  const browseHref = citySlug
+    ? `/${(CATEGORY_TO_SEO[item.category] ?? item.category)}-in-${citySlug}`
+    : `/search?q=${encodeURIComponent(m.name)}&nlp=1`;
   const shortlistedCount = item.vendors.filter(v => shortlist.some(s => s.id === v.id)).length;
 
   return (
@@ -584,12 +769,26 @@ function CategorySection({
             ))}
           </div>
         </>
+      ) : item.data_missing ? (
+        <div className="px-5 py-10 text-center">
+          <p className="text-4xl mb-3">⚠️</p>
+          <p className="text-sm font-bold text-amber-700 mb-1">No {m.name} vendors in your city match this budget</p>
+          <p className="text-xs text-gray-400 mb-4">
+            Budget allocated: <strong>{fmt(item.allocatedBudget)}</strong> — try increasing your total budget or expanding to nearby cities
+          </p>
+          <Link
+            href={browseHref}
+            className="text-xs font-extrabold text-red-600 bg-red-50 hover:bg-red-100 px-4 py-2 rounded-full transition"
+          >
+            Browse all {m.name} vendors →
+          </Link>
+        </div>
       ) : (
         <div className="px-5 py-10 text-center">
           <p className="text-4xl mb-3">🔍</p>
           <p className="text-sm font-bold text-gray-600 mb-1">No vendors found for {m.name}</p>
           <p className="text-xs text-gray-400 mb-3">Try adjusting your budget or city</p>
-          <Link href={`/search?q=${item.category}`} className="text-xs font-extrabold text-red-600 bg-red-50 hover:bg-red-100 px-4 py-2 rounded-full transition">
+          <Link href={browseHref} className="text-xs font-extrabold text-red-600 bg-red-50 hover:bg-red-100 px-4 py-2 rounded-full transition">
             Browse {m.name} vendors →
           </Link>
         </div>
@@ -1088,12 +1287,16 @@ function PlanPageInner() {
           {/* C. Smart summary */}
           <SmartSummary plan={plan} cityName={cityName} catMap={catMap} />
 
+          {/* C2. Budget insight */}
+          <BudgetInsightCard budget={Number(form.budget)} eventType={form.eventType} cityName={cityName} />
+
           {/* D. Recommended Package */}
           <RecommendedPackage
             plan={plan}
             catMap={catMap}
             onGetQuote={setSelectedVendor}
             onGetAll={handleBulkQuote}
+            eventType={form.eventType}
           />
 
           {/* E. Two-column: sidebar + vendor sections */}
@@ -1129,6 +1332,7 @@ function PlanPageInner() {
                     shortlist={shortlist}
                     onToggle={toggleShortlist}
                     onGetQuote={setSelectedVendor}
+                    citySlug={currentCity?.slug}
                   />
                 ))}
 

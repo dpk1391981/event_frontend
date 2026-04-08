@@ -1,11 +1,12 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useEffect, useState, useCallback } from 'react';
+import { useParams, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { vendorsApi } from '@/lib/api';
-import type { Vendor } from '@/types';
-import LeadModal from '@/components/lead/LeadModal';
+import { vendorsApi, packagesApi } from '@/lib/api';
+import type { Vendor, VendorPackage } from '@/types';
+import SmartLeadModal from '@/components/lead/SmartLeadModal';
+import { useLeadTrigger } from '@/hooks/useLeadTrigger';
 import Image from 'next/image';
 
 function StarRating({ rating, count }: { rating: number; count: number }) {
@@ -24,11 +25,144 @@ function StarRating({ rating, count }: { rating: number; count: number }) {
   );
 }
 
+// ── Suggested Packages Section ────────────────────────────────────────────────
+function SuggestedPackages({ vendorId, onSelect }: { vendorId: number; onSelect: (pkg: VendorPackage) => void }) {
+  const [packages, setPackages] = useState<VendorPackage[]>([]);
+  const [loading, setLoading]   = useState(true);
+
+  useEffect(() => {
+    packagesApi.search({ vendorId, limit: 6, status: 'active' })
+      .then((r: unknown) => {
+        const data = (r as { data?: VendorPackage[] })?.data ?? (r as VendorPackage[]);
+        setPackages(Array.isArray(data) ? data : []);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [vendorId]);
+
+  if (loading) {
+    return (
+      <div>
+        <h2 className="font-bold text-gray-900 mb-3">Packages</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {[1, 2].map(i => <div key={i} className="h-28 bg-gray-100 rounded-2xl animate-pulse" />)}
+        </div>
+      </div>
+    );
+  }
+
+  if (packages.length === 0) return null;
+
+  const tierConfig = [
+    { bg: 'bg-white',      border: 'border-gray-100', badge: '', headerBg: 'bg-gray-50' },
+    { bg: 'bg-white',      border: 'border-purple-200', badge: '⭐ Popular', headerBg: 'bg-purple-50' },
+    { bg: 'bg-white',      border: 'border-yellow-200', badge: '👑 Premium', headerBg: 'bg-yellow-50' },
+  ];
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="font-bold text-gray-900">Packages & Pricing</h2>
+        <span className="text-xs text-gray-400">{packages.length} available</span>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {packages.map((pkg, idx) => {
+          const cfg = tierConfig[Math.min(idx, tierConfig.length - 1)];
+          return (
+            <div key={pkg.id}
+              className={`rounded-2xl border-2 ${cfg.border} ${cfg.bg} overflow-hidden hover:shadow-md transition group`}>
+              <div className={`${cfg.headerBg} px-4 py-3 flex items-center justify-between`}>
+                <div>
+                  {cfg.badge && (
+                    <span className="text-[10px] font-extrabold text-purple-700 bg-purple-100 px-2 py-0.5 rounded-full mb-1 inline-block">
+                      {cfg.badge}
+                    </span>
+                  )}
+                  <p className="text-sm font-extrabold text-gray-900 leading-tight">{pkg.title}</p>
+                </div>
+                <div className="text-right shrink-0 ml-3">
+                  <p className="text-lg font-extrabold text-gray-900">
+                    ₹{pkg.price.toLocaleString('en-IN')}
+                  </p>
+                  {pkg.priceType === 'per_person' && (
+                    <p className="text-[10px] text-gray-400">per person</p>
+                  )}
+                </div>
+              </div>
+              {(pkg.description || (pkg.includes && pkg.includes.length > 0)) && (
+                <div className="px-4 py-3">
+                  {pkg.description && (
+                    <p className="text-xs text-gray-500 mb-2 leading-relaxed line-clamp-2">{pkg.description}</p>
+                  )}
+                  {pkg.includes && pkg.includes.length > 0 && (
+                    <ul className="space-y-1">
+                      {pkg.includes.slice(0, 4).map((item, i) => (
+                        <li key={i} className="flex items-start gap-1.5 text-xs text-gray-600">
+                          <span className="text-green-500 font-bold shrink-0 mt-0.5">✓</span>
+                          <span className="line-clamp-1">{item}</span>
+                        </li>
+                      ))}
+                      {pkg.includes.length > 4 && (
+                        <li className="text-xs text-gray-400">+{pkg.includes.length - 4} more included</li>
+                      )}
+                    </ul>
+                  )}
+                </div>
+              )}
+              <div className="px-4 pb-3">
+                <button
+                  onClick={() => onSelect(pkg)}
+                  className="w-full text-xs font-extrabold bg-purple-700 hover:bg-purple-800 text-white py-2.5 rounded-xl transition group-hover:shadow-sm"
+                >
+                  Get Quote for This Package →
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ── From-Plan Context Banner ──────────────────────────────────────────────────
+function FromPlanBanner({ eventType, budget, cityId }: { eventType: string; budget: string; cityId: string }) {
+  if (!eventType) return null;
+  const label = eventType.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  const planUrl = `/plan?eventType=${eventType}&budget=${budget}&cityId=${cityId}&autosubmit=1`;
+  return (
+    <div className="bg-gradient-to-r from-rose-50 to-pink-50 border border-rose-200 rounded-2xl px-4 py-3 flex items-center justify-between gap-3 mb-6">
+      <div className="flex items-center gap-2.5">
+        <span className="text-xl">💍</span>
+        <div>
+          <p className="text-xs font-extrabold text-rose-800">Viewing from your {label} plan</p>
+          <p className="text-[11px] text-rose-600">This vendor was matched to your budget</p>
+        </div>
+      </div>
+      <Link href={planUrl}
+        className="shrink-0 text-xs font-extrabold text-rose-700 border border-rose-300 hover:bg-rose-100 px-3 py-1.5 rounded-xl transition whitespace-nowrap">
+        ← Back to Plan
+      </Link>
+    </div>
+  );
+}
+
 export default function VendorProfilePage() {
   const { slug } = useParams<{ slug: string }>();
-  const [vendor, setVendor] = useState<Vendor | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [showLead, setShowLead] = useState(false);
+  const searchParams = useSearchParams();
+  const [vendor, setVendor]       = useState<Vendor | null>(null);
+  const [loading, setLoading]     = useState(true);
+  const [showLead, setShowLead]   = useState(false);
+  const [selectedPkg, setSelectedPkg] = useState<VendorPackage | null>(null);
+  const [galleryIdx, setGalleryIdx]   = useState(0);
+
+  // Context from plan page
+  const fromEventType = searchParams.get('from') || '';
+  const fromBudget    = searchParams.get('budget') || '';
+  const fromCityId    = searchParams.get('cityId') || '';
+
+  const openLead = useCallback(() => setShowLead(true), []);
+  useLeadTrigger(openLead, { enabled: !!vendor && !loading });
 
   useEffect(() => {
     vendorsApi.getBySlug(slug)
@@ -51,24 +185,77 @@ export default function VendorProfilePage() {
     return <VendorNotFound slug={slug} />;
   }
 
+  const allImages = vendor.portfolioImages ?? [];
+  const safeIdx   = Math.min(galleryIdx, Math.max(0, allImages.length - 1));
+
   return (
     <div className="max-w-4xl mx-auto px-4 py-8">
-      {/* Portfolio Hero */}
-      <div className="relative h-64 sm:h-80 bg-gradient-to-br from-purple-100 to-indigo-100 rounded-2xl overflow-hidden mb-6">
-        {vendor.portfolioImages?.[0] ? (
-          <Image src={vendor.portfolioImages[0]} alt={vendor.businessName} fill className="object-cover" />
+      {/* Context banner — shown when arriving from plan page */}
+      {fromEventType && (
+        <FromPlanBanner eventType={fromEventType} budget={fromBudget} cityId={fromCityId} />
+      )}
+
+      {/* Portfolio Hero with gallery navigation */}
+      <div className="relative h-64 sm:h-80 bg-gradient-to-br from-purple-100 to-indigo-100 rounded-2xl overflow-hidden mb-2 group">
+        {allImages[safeIdx] ? (
+          <Image key={safeIdx} src={allImages[safeIdx]} alt={vendor.businessName} fill className="object-cover transition-opacity duration-300" />
         ) : (
           <div className="w-full h-full flex items-center justify-center text-7xl text-purple-200 font-bold">
             {vendor.businessName[0]}
           </div>
         )}
-        {vendor.isFeatured && (
-          <span className="absolute top-3 left-3 bg-yellow-400 text-yellow-900 text-xs font-bold px-3 py-1 rounded-full">FEATURED</span>
+        {/* Gradient overlay */}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent" />
+
+        {/* Gallery nav arrows */}
+        {allImages.length > 1 && (
+          <>
+            <button
+              onClick={() => setGalleryIdx(i => (i - 1 + allImages.length) % allImages.length)}
+              className="absolute left-3 top-1/2 -translate-y-1/2 w-9 h-9 bg-black/50 backdrop-blur-sm text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition hover:bg-black/70"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+            <button
+              onClick={() => setGalleryIdx(i => (i + 1) % allImages.length)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 w-9 h-9 bg-black/50 backdrop-blur-sm text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition hover:bg-black/70"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
+          </>
         )}
-        {vendor.isVerified && (
-          <span className="absolute top-3 right-3 bg-green-500 text-white text-xs font-bold px-3 py-1 rounded-full">✓ Verified</span>
+
+        {/* Top badges */}
+        <div className="absolute top-3 left-3 flex gap-2">
+          {vendor.isFeatured && (
+            <span className="bg-yellow-400 text-yellow-900 text-xs font-bold px-3 py-1 rounded-full shadow-sm">⭐ Featured</span>
+          )}
+          {vendor.isVerified && (
+            <span className="bg-green-500 text-white text-xs font-bold px-3 py-1 rounded-full shadow-sm">✓ Verified</span>
+          )}
+        </div>
+
+        {/* Image counter */}
+        {allImages.length > 1 && (
+          <div className="absolute bottom-3 right-3 bg-black/60 backdrop-blur-sm text-white text-[10px] font-bold px-2.5 py-1 rounded-full">
+            {safeIdx + 1} / {allImages.length}
+          </div>
         )}
       </div>
+
+      {/* Gallery dot nav */}
+      {allImages.length > 1 && (
+        <div className="flex justify-center gap-1.5 mb-5 mt-2">
+          {allImages.map((_, i) => (
+            <button key={i} onClick={() => setGalleryIdx(i)}
+              className={`rounded-full transition-all duration-200 ${i === safeIdx ? 'w-5 h-2 bg-purple-600' : 'w-2 h-2 bg-gray-300 hover:bg-gray-400'}`} />
+          ))}
+        </div>
+      )}
 
       <div className="grid md:grid-cols-3 gap-6">
         {/* Main Info */}
@@ -96,6 +283,12 @@ export default function VendorProfilePage() {
             </div>
           )}
 
+          {/* Suggested packages */}
+          <SuggestedPackages
+            vendorId={vendor.id}
+            onSelect={(pkg) => { setSelectedPkg(pkg); setShowLead(true); }}
+          />
+
           {/* Details */}
           <div>
             <h2 className="font-bold text-gray-900 mb-3">Details</h2>
@@ -114,15 +307,16 @@ export default function VendorProfilePage() {
             </div>
           </div>
 
-          {/* Portfolio */}
-          {vendor.portfolioImages && vendor.portfolioImages.length > 1 && (
+          {/* Portfolio thumbnails */}
+          {allImages.length > 1 && (
             <div>
               <h2 className="font-bold text-gray-900 mb-3">Portfolio</h2>
-              <div className="grid grid-cols-3 gap-2">
-                {vendor.portfolioImages.slice(1, 7).map((img, i) => (
-                  <div key={i} className="aspect-square relative rounded-xl overflow-hidden bg-gray-100">
+              <div className="grid grid-cols-4 gap-2">
+                {allImages.slice(0, 8).map((img, i) => (
+                  <button key={i} onClick={() => setGalleryIdx(i)}
+                    className={`aspect-square relative rounded-xl overflow-hidden bg-gray-100 border-2 transition ${i === safeIdx ? 'border-purple-500 shadow-sm' : 'border-transparent hover:border-gray-300'}`}>
                     <Image src={img} alt={`Portfolio ${i + 1}`} fill className="object-cover" />
-                  </div>
+                  </button>
                 ))}
               </div>
             </div>
@@ -131,25 +325,40 @@ export default function VendorProfilePage() {
 
         {/* Sticky CTA Card */}
         <div className="md:col-span-1">
-          <div className="bg-white border border-gray-100 rounded-2xl shadow-sm p-5 md:sticky md:top-20">
+          <div className="bg-white border border-gray-100 rounded-2xl shadow-md p-5 md:sticky md:top-20 overflow-hidden">
+            {/* Accent top bar */}
+            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-purple-500 via-pink-500 to-rose-500 rounded-t-2xl" />
+
+            {/* Price */}
             {vendor.minPrice && (
-              <div className="mb-4">
-                <p className="text-xs text-gray-500 mb-0.5">Starting From</p>
-                <p className="text-2xl font-extrabold text-gray-900">
-                  ₹{vendor.minPrice.toLocaleString()}
-                </p>
-                {vendor.priceUnit && <p className="text-xs text-gray-400">{vendor.priceUnit}</p>}
-                {vendor.maxPrice && (
-                  <p className="text-xs text-gray-500 mt-0.5">
-                    Up to ₹{vendor.maxPrice.toLocaleString()}
+              <div className="mb-4 mt-1">
+                <p className="text-xs text-gray-400 mb-0.5 font-semibold uppercase tracking-wide">Starting From</p>
+                <div className="flex items-end gap-2">
+                  <p className="text-3xl font-extrabold text-gray-900">
+                    ₹{Number(vendor.minPrice).toLocaleString('en-IN')}
                   </p>
-                )}
+                  {vendor.maxPrice && (
+                    <p className="text-sm text-gray-400 mb-1 font-semibold">
+                      – ₹{Number(vendor.maxPrice).toLocaleString('en-IN')}
+                    </p>
+                  )}
+                </div>
+                {vendor.priceUnit && <p className="text-xs text-gray-400 mt-0.5">{vendor.priceUnit}</p>}
+              </div>
+            )}
+
+            {/* Social proof */}
+            {vendor.reviewCount > 0 && (
+              <div className="flex items-center gap-2 bg-yellow-50 border border-yellow-100 rounded-xl px-3 py-2 mb-4">
+                <span className="text-yellow-500 font-extrabold text-sm">★ {Number(vendor.rating).toFixed(1)}</span>
+                <span className="text-xs text-gray-500">{vendor.reviewCount} verified reviews</span>
+                {vendor.isFeatured && <span className="ml-auto text-[10px] bg-purple-100 text-purple-700 font-bold px-2 py-0.5 rounded-full">Featured</span>}
               </div>
             )}
 
             <button
-              onClick={() => setShowLead(true)}
-              className="w-full bg-purple-700 text-white font-bold py-3.5 rounded-xl hover:bg-purple-800 transition mb-3 text-base"
+              onClick={() => { setSelectedPkg(null); setShowLead(true); }}
+              className="w-full bg-gradient-to-r from-purple-700 to-violet-700 hover:from-purple-800 hover:to-violet-800 text-white font-bold py-3.5 rounded-xl transition mb-3 text-base shadow-lg shadow-purple-200"
             >
               Get Free Quote
             </button>
@@ -157,7 +366,7 @@ export default function VendorProfilePage() {
             {vendor.phone && (
               <a
                 href={`tel:+91${vendor.phone}`}
-                className="w-full flex items-center justify-center gap-2 border border-gray-200 text-gray-700 font-semibold py-3 rounded-xl hover:bg-gray-50 transition text-sm"
+                className="w-full flex items-center justify-center gap-2 border-2 border-gray-100 text-gray-700 font-semibold py-3 rounded-xl hover:border-purple-300 hover:text-purple-700 transition text-sm"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
@@ -166,16 +375,29 @@ export default function VendorProfilePage() {
               </a>
             )}
 
-            <div className="mt-4 pt-4 border-t border-gray-50 space-y-2 text-xs text-gray-500">
-              <p className="flex items-center gap-2"><span>🛡️</span> Verified Business</p>
-              <p className="flex items-center gap-2"><span>💬</span> Free Quote, No Charges</p>
-              <p className="flex items-center gap-2"><span>⚡</span> Usually responds within 2 hours</p>
+            <div className="mt-4 pt-4 border-t border-gray-50 space-y-2.5 text-xs text-gray-500">
+              <p className="flex items-center gap-2 font-medium"><span>🛡️</span> Verified Business</p>
+              <p className="flex items-center gap-2 font-medium"><span>💬</span> Free Quote — No Hidden Charges</p>
+              <p className="flex items-center gap-2 font-medium"><span>⚡</span> Usually responds within 2 hours</p>
+              {vendor.yearsOfExperience && (
+                <p className="flex items-center gap-2 font-medium"><span>🏆</span> {vendor.yearsOfExperience}+ years of experience</p>
+              )}
             </div>
           </div>
         </div>
       </div>
 
-      {showLead && <LeadModal vendor={vendor} onClose={() => setShowLead(false)} />}
+      {showLead && (
+        <SmartLeadModal
+          mode="single"
+          vendorId={vendor.id}
+          vendorName={vendor.businessName}
+          categoryId={selectedPkg?.categoryId ?? vendor.categories?.[0]?.id}
+          serviceType={vendor.categories?.[0]?.name}
+          packageId={selectedPkg?.id}
+          onClose={() => { setShowLead(false); setSelectedPkg(null); }}
+        />
+      )}
     </div>
   );
 }
@@ -183,12 +405,12 @@ export default function VendorProfilePage() {
 /* ── Premium Vendor Not Found ──────────────────────────────────────────── */
 function VendorNotFound({ slug }: { slug: string }) {
   const SUGGESTIONS = [
-    { label: 'Wedding Photographers', href: '/search?category=photography', icon: '📸' },
-    { label: 'Event Caterers', href: '/search?category=catering', icon: '🍽️' },
-    { label: 'Party Venues', href: '/search?category=venue', icon: '🏛️' },
-    { label: 'DJ & Music', href: '/search?category=dj-music', icon: '🎵' },
-    { label: 'Bridal Makeup', href: '/search?category=makeup', icon: '💄' },
-    { label: 'Event Decorators', href: '/search?category=decoration', icon: '🌸' },
+    { label: 'Wedding Photographers', href: '/photographers-in-delhi', icon: '📸' },
+    { label: 'Event Caterers', href: '/caterers-in-delhi', icon: '🍽️' },
+    { label: 'Party Venues', href: '/event-venues-in-delhi', icon: '🏛️' },
+    { label: 'DJ & Music', href: '/dj-services-in-delhi', icon: '🎵' },
+    { label: 'Bridal Makeup', href: '/makeup-artists-in-delhi', icon: '💄' },
+    { label: 'Event Decorators', href: '/decorators-in-delhi', icon: '🌸' },
   ];
 
   return (

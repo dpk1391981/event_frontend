@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { buildCityEventsUrl, buildSeoUrl } from '@/lib/seo-urls';
 import { CheckCircleIcon, ChevronRightIcon, LocationIcon, LogoMark, RobotIcon } from '@/components/ui/Icon';
+import DynamicSeoFooterLinks from './DynamicSeoFooterLinks';
 
 const FOOTER_CITIES = [
   { name: 'Noida', slug: 'noida' },
@@ -128,17 +129,8 @@ export default function Footer() {
           </div>
         </div>
 
-        <div className="mb-10 border-t border-gray-800 pt-10">
-          <p className="mb-5 text-xs font-bold uppercase tracking-wider text-gray-500">Popular Searches</p>
-          <div className="grid grid-cols-2 gap-x-6 gap-y-2 sm:grid-cols-3 lg:grid-cols-4">
-            {SEO_LINKS.map((link) => (
-              <Link key={link.href} href={link.href} className="flex items-center gap-1.5 truncate py-0.5 text-xs text-gray-500 transition hover:text-red-400">
-                <ChevronRightIcon className="h-2.5 w-2.5 shrink-0 text-red-700" />
-                <span className="truncate">{link.label}</span>
-              </Link>
-            ))}
-          </div>
-        </div>
+        {/* Dynamic DB-driven SEO footer links — falls back to nothing if API unavailable */}
+        <DynamicSeoFooterLinks />
 
         <div className="flex flex-col items-center justify-between gap-4 border-t border-gray-800 pt-6 text-xs text-gray-600 sm:flex-row">
           <p>© {new Date().getFullYear()} PlanToday. All rights reserved.</p>

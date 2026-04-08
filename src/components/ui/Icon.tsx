@@ -5,24 +5,26 @@
 
 type IconProps = { className?: string };
 
-export function LogoMark({ className = 'w-8 h-8' }: IconProps) {
+export function LogoMark({ className }: { className?: string }) {
   return (
-    <svg className={className} viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <svg className={className} viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
       {/* Calendar body */}
-      <rect x="3" y="6" width="26" height="23" rx="4" fill="url(#logo-grad)" />
+      <rect x="4" y="10" width="28" height="23" rx="5" fill="#C0392B"/>
       {/* Top bar */}
-      <rect x="3" y="6" width="26" height="8" rx="4" fill="rgba(0,0,0,0.18)" />
-      {/* Pin tabs */}
-      <rect x="10" y="3" width="3" height="6" rx="1.5" fill="white" opacity="0.9" />
-      <rect x="19" y="3" width="3" height="6" rx="1.5" fill="white" opacity="0.9" />
-      {/* Check mark */}
-      <path d="M10 19l4 4 8-8" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-      <defs>
-        <linearGradient id="logo-grad" x1="3" y1="6" x2="29" y2="29" gradientUnits="userSpaceOnUse">
-          <stop stopColor="#ef4444" />
-          <stop offset="1" stopColor="#be123c" />
-        </linearGradient>
-      </defs>
+      <rect x="4" y="10" width="28" height="10" rx="5" fill="#E74C3C"/>
+      <rect x="4" y="15" width="28" height="5" fill="#E74C3C"/>
+      {/* Rings */}
+      <rect x="11" y="6" width="4" height="9" rx="2" fill="#922B21"/>
+      <rect x="21" y="6" width="4" height="9" rx="2" fill="#922B21"/>
+      {/* Grid dots */}
+      <circle cx="12" cy="26" r="2" fill="rgba(255,255,255,0.4)"/>
+      <circle cx="18" cy="26" r="2" fill="rgba(255,255,255,0.4)"/>
+      <circle cx="24" cy="26" r="2" fill="#F39C12"/>
+      <circle cx="12" cy="31" r="2" fill="rgba(255,255,255,0.4)"/>
+      <circle cx="18" cy="31" r="2" fill="rgba(255,255,255,0.4)"/>
+      <circle cx="24" cy="31" r="2" fill="rgba(255,255,255,0.4)"/>
+      {/* Gold star */}
+      <path d="M30 7 L31.2 10.8 L35 10.8 L32 13.2 L33.2 17 L30 14.6 L26.8 17 L28 13.2 L25 10.8 L28.8 10.8 Z" fill="#F39C12"/>
     </svg>
   );
 }

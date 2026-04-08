@@ -51,6 +51,8 @@ export default function Header() {
     setMobileOpen(false);
     if (city && (forceRedirect || pathname === '/' || pathname?.startsWith('/plan-event-in-'))) {
       router.push(`/plan-event-in-${city.slug}`);
+    } else if (!city && pathname?.startsWith('/plan-event-in-')) {
+      router.push('/');
     }
   }, [pathname, router, setSelectedCity]);
 

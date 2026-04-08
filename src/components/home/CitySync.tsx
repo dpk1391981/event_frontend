@@ -43,7 +43,7 @@ export default function CitySync({ citySlug }: Props) {
       {/* Scrolling track — same pattern as HeroTicker */}
       <div
         className="ticker-track whitespace-nowrap"
-        style={{ animationDuration: `${duration}s` }}
+        style={{ animation: `ticker ${duration}s linear infinite` }}
       >
         {items.map((loc, i) => (
           <Link

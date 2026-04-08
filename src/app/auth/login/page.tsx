@@ -71,7 +71,7 @@ export default function LoginPage() {
     try {
       const res = await authApi.verifyOtp(phone, otp) as unknown as {
         token: string;
-        user: { id: number; name?: string; role: string };
+        user: { id: number; name?: string; role: 'user' | 'vendor' | 'admin' | 'super_admin' };
         isNewUser: boolean;
       };
       setToken(res.token); setUser(res.user);

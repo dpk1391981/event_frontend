@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { authApi } from '@/lib/api';
 import { useAppStore } from '@/store/useAppStore';
 import { LogoMark, CheckIcon, ChevronLeftIcon, WarningIcon } from '@/components/ui/Icon';
+import type { User } from '@/store/useAppStore';
 
 type Step = 'phone' | 'otp' | 'profile';
 
@@ -82,7 +83,7 @@ export default function AuthBottomSheet() {
     setLoading(true); setError('');
     try {
       const res = await authApi.verifyOtp(phone, otp) as unknown as {
-        token: string; user: { id: number; name?: string; role: string }; isNewUser: boolean;
+        token: string; user: User; isNewUser: boolean;
       };
       setToken(res.token); setUser(res.user);
       if (res.isNewUser) { setStep('profile'); return; }
@@ -99,7 +100,7 @@ export default function AuthBottomSheet() {
     setLoading(true); setError('');
     try {
       const res = await authApi.updateProfile({ name, role }) as unknown as {
-        user: { id: number; name: string; role: string };
+        user: User;
       };
       setUser(res.user);
       closeAuthModal();

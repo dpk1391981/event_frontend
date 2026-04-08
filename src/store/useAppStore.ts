@@ -16,10 +16,13 @@ interface AppStore {
   token: string | null;
   selectedCity: City | null;
   selectedLocality: Locality | null;
+  authModalOpen: boolean;
   setUser: (user: User | null) => void;
   setToken: (token: string | null) => void;
   setSelectedCity: (city: City | null) => void;
   setSelectedLocality: (locality: Locality | null) => void;
+  openAuthModal: () => void;
+  closeAuthModal: () => void;
   logout: () => void;
 }
 
@@ -30,6 +33,7 @@ export const useAppStore = create<AppStore>()(
       token: null,
       selectedCity: null,
       selectedLocality: null,
+      authModalOpen: false,
       setUser: (user) => set({ user }),
       setToken: (token) => {
         set({ token });
@@ -38,6 +42,8 @@ export const useAppStore = create<AppStore>()(
       },
       setSelectedCity: (city) => set({ selectedCity: city, selectedLocality: null }),
       setSelectedLocality: (locality) => set({ selectedLocality: locality }),
+      openAuthModal:  () => set({ authModalOpen: true }),
+      closeAuthModal: () => set({ authModalOpen: false }),
       logout: () => {
         localStorage.removeItem('token');
         set({ user: null, token: null });

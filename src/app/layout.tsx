@@ -6,6 +6,7 @@ import Footer from '@/components/layout/Footer';
 import LaunchGate from '@/components/launch/LaunchGate';
 import GlobalLeadCTA from '@/components/lead/GlobalLeadCTA';
 import CookieConsent from '@/components/common/CookieConsent';
+import AuthBottomSheet from '@/components/auth/AuthBottomSheet';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -79,6 +80,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <div className="flex-1 min-w-0">{children}</div>
           <Footer />
           <GlobalLeadCTA />
+          <AuthBottomSheet />
           <CookieConsent />
         </LaunchGate>
       </body>

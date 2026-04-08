@@ -274,7 +274,7 @@ export default function VendorProfilePage() {
   const safeIdx   = Math.min(galleryIdx, Math.max(0, allImages.length - 1));
 
   return (
-    <div className="max-w-4xl mx-auto px-4 py-8">
+    <div className="max-w-4xl mx-auto px-4 py-4 sm:py-8 pb-24 md:pb-8">
       {/* Context banner — shown when arriving from plan page */}
       {fromEventType && (
         <FromPlanBanner eventType={fromEventType} budget={fromBudget} cityId={fromCityId} />
@@ -297,7 +297,7 @@ export default function VendorProfilePage() {
           <>
             <button
               onClick={() => setGalleryIdx(i => (i - 1 + allImages.length) % allImages.length)}
-              className="absolute left-3 top-1/2 -translate-y-1/2 w-9 h-9 bg-black/50 backdrop-blur-sm text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition hover:bg-black/70"
+              className="absolute left-3 top-1/2 -translate-y-1/2 w-9 h-9 bg-black/50 backdrop-blur-sm text-white rounded-full flex items-center justify-center opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition hover:bg-black/70 active:bg-black/80"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
@@ -305,7 +305,7 @@ export default function VendorProfilePage() {
             </button>
             <button
               onClick={() => setGalleryIdx(i => (i + 1) % allImages.length)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 w-9 h-9 bg-black/50 backdrop-blur-sm text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition hover:bg-black/70"
+              className="absolute right-3 top-1/2 -translate-y-1/2 w-9 h-9 bg-black/50 backdrop-blur-sm text-white rounded-full flex items-center justify-center opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition hover:bg-black/70 active:bg-black/80"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
@@ -473,6 +473,26 @@ export default function VendorProfilePage() {
             </div>
           </div>
         </div>
+      </div>
+
+      {/* Mobile sticky CTA bar */}
+      <div className="md:hidden mobile-cta-bar flex items-center gap-3">
+        <button
+          onClick={() => { setSelectedPkg(null); setShowLead(true); }}
+          className="flex-1 bg-gradient-to-r from-purple-700 to-violet-700 text-white font-extrabold py-3 rounded-2xl text-sm shadow-lg shadow-purple-200 active:scale-[0.98] transition"
+        >
+          Get Free Quote
+        </button>
+        {vendor.phone && (
+          <a
+            href={`tel:+91${vendor.phone}`}
+            className="shrink-0 w-12 h-12 border-2 border-gray-100 rounded-2xl flex items-center justify-center text-gray-700 active:bg-gray-50 transition"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+            </svg>
+          </a>
+        )}
       </div>
 
       {showLead && (

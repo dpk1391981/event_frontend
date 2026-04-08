@@ -113,7 +113,7 @@ export default function TopVendorCarousel() {
                 : minP ? `From ₹${(minP/1000).toFixed(0)}K` : null;
 
               return (
-                <div key={vendor.id} className="flex-none w-68 sm:w-72 snap-start group">
+                <div key={vendor.id} className="flex-none w-[272px] sm:w-72 snap-start group">
                   <div className={`bg-white rounded-2xl border overflow-hidden transition-all duration-200 hover:-translate-y-1 hover:shadow-xl ${
                     idx === 0 ? 'border-yellow-400 ring-2 ring-yellow-300/60 shadow-yellow-100 shadow-lg' :
                     idx === 1 ? 'border-gray-300 ring-2 ring-gray-200/60 shadow-gray-100 shadow-md' :

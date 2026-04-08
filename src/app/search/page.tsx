@@ -11,26 +11,43 @@ import LeadModal from '@/components/lead/LeadModal';
 
 type ViewMode = 'list' | 'grid';
 
-/* Loading skeleton — list view */
+/* Loading skeleton — responsive: grid on mobile, list on desktop */
 function ListSkeleton() {
   return (
-    <div className="space-y-3">
-      {[...Array(5)].map((_, i) => (
-        <div key={i} className="bg-white rounded-2xl border border-gray-100 overflow-hidden flex h-44">
-          <div className="w-52 shrink-0 skeleton" />
-          <div className="flex-1 p-5 space-y-3">
-            <div className="h-5 skeleton rounded w-2/3" />
-            <div className="h-3.5 skeleton rounded w-1/3" />
-            <div className="h-3.5 skeleton rounded w-1/2" />
-            <div className="h-3 skeleton rounded w-3/4 mt-1" />
-            <div className="flex gap-2 mt-auto pt-3">
-              <div className="h-9 skeleton rounded-xl w-28" />
-              <div className="h-9 skeleton rounded-xl w-36" />
+    <>
+      {/* Mobile: 2-col grid skeleton */}
+      <div className="sm:hidden grid grid-cols-2 gap-3">
+        {[...Array(6)].map((_, i) => (
+          <div key={i} className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+            <div className="h-36 skeleton" />
+            <div className="p-3 space-y-2">
+              <div className="h-3.5 skeleton rounded w-3/4" />
+              <div className="h-3 skeleton rounded w-1/2" />
+              <div className="h-3 skeleton rounded w-2/3" />
+              <div className="h-8 skeleton rounded-xl mt-2" />
             </div>
           </div>
-        </div>
-      ))}
-    </div>
+        ))}
+      </div>
+      {/* Desktop: list skeleton */}
+      <div className="hidden sm:block space-y-3">
+        {[...Array(5)].map((_, i) => (
+          <div key={i} className="bg-white rounded-2xl border border-gray-100 overflow-hidden flex h-44">
+            <div className="w-52 shrink-0 skeleton" />
+            <div className="flex-1 p-5 space-y-3">
+              <div className="h-5 skeleton rounded w-2/3" />
+              <div className="h-3.5 skeleton rounded w-1/3" />
+              <div className="h-3.5 skeleton rounded w-1/2" />
+              <div className="h-3 skeleton rounded w-3/4 mt-1" />
+              <div className="flex gap-2 mt-auto pt-3">
+                <div className="h-9 skeleton rounded-xl w-28" />
+                <div className="h-9 skeleton rounded-xl w-36" />
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </>
   );
 }
 
@@ -246,7 +263,7 @@ function SearchPageInner() {
         )}
 
         {/* Tab bar */}
-        <div className="flex items-center gap-1 bg-white border border-gray-200 rounded-xl p-1 mb-5 w-fit">
+        <div className="flex items-center gap-1 bg-white border border-gray-200 rounded-xl p-1 mb-5 overflow-x-auto scrollbar-hide w-full sm:w-fit">
           {([
             { key: 'recommended', label: 'Recommended', icon: '✦' },
             { key: 'rated', label: 'Top Rated', icon: '⭐' },
@@ -282,8 +299,8 @@ function SearchPageInner() {
           {/* ── Results column ── */}
           <div className="flex-1 min-w-0">
             {/* Results bar */}
-            <div className="flex items-center justify-between mb-4 gap-3">
-              <p className="text-sm text-gray-500 min-w-0">
+            <div className="flex items-center justify-between mb-4 gap-2">
+              <p className="text-sm text-gray-500 min-w-0 truncate">
                 {loading ? (
                   <span className="flex items-center gap-2">
                     <span className="w-4 h-4 border-2 border-red-300 border-t-red-600 rounded-full animate-spin inline-block" />
@@ -380,28 +397,30 @@ function SearchPageInner() {
 
                 {/* Pagination */}
                 {result.meta.pages > 1 && (
-                  <div className="flex justify-center gap-2 mt-8 flex-wrap">
-                    <button
-                      onClick={() => updateFilter('page', Math.max(1, filters.page - 1))}
-                      disabled={filters.page === 1}
-                      className="w-9 h-9 rounded-full text-sm font-medium border border-gray-200 text-gray-600 hover:border-red-400 disabled:opacity-40 transition"
-                    >‹</button>
-                    {[...Array(Math.min(result.meta.pages, 7))].map((_, i) => (
+                  <div className="mt-8 overflow-x-auto scrollbar-hide">
+                    <div className="flex justify-start sm:justify-center gap-2 min-w-max px-1 pb-1">
                       <button
-                        key={i}
-                        onClick={() => updateFilter('page', i + 1)}
-                        className={`w-9 h-9 rounded-full text-sm font-bold transition ${
-                          filters.page === i + 1
-                            ? 'bg-red-600 text-white shadow-md'
-                            : 'bg-white border border-gray-200 text-gray-600 hover:border-red-400 hover:text-red-600'
-                        }`}
-                      >{i + 1}</button>
-                    ))}
-                    <button
-                      onClick={() => updateFilter('page', Math.min(result.meta.pages, filters.page + 1))}
-                      disabled={filters.page === result.meta.pages}
-                      className="w-9 h-9 rounded-full text-sm font-medium border border-gray-200 text-gray-600 hover:border-red-400 disabled:opacity-40 transition"
-                    >›</button>
+                        onClick={() => updateFilter('page', Math.max(1, filters.page - 1))}
+                        disabled={filters.page === 1}
+                        className="w-10 h-10 rounded-full text-sm font-medium border border-gray-200 text-gray-600 hover:border-red-400 disabled:opacity-40 transition shrink-0"
+                      >‹</button>
+                      {[...Array(Math.min(result.meta.pages, 10))].map((_, i) => (
+                        <button
+                          key={i}
+                          onClick={() => updateFilter('page', i + 1)}
+                          className={`w-10 h-10 rounded-full text-sm font-bold transition shrink-0 ${
+                            filters.page === i + 1
+                              ? 'bg-red-600 text-white shadow-md'
+                              : 'bg-white border border-gray-200 text-gray-600 hover:border-red-400 hover:text-red-600'
+                          }`}
+                        >{i + 1}</button>
+                      ))}
+                      <button
+                        onClick={() => updateFilter('page', Math.min(result.meta.pages, filters.page + 1))}
+                        disabled={filters.page === result.meta.pages}
+                        className="w-10 h-10 rounded-full text-sm font-medium border border-gray-200 text-gray-600 hover:border-red-400 disabled:opacity-40 transition shrink-0"
+                      >›</button>
+                    </div>
                   </div>
                 )}
               </>

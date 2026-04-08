@@ -10,7 +10,7 @@ const STEPS = ['Business Info', 'Location', 'Services & Pricing', 'Done'];
 
 export default function VendorOnboardPage() {
   const router = useRouter();
-  const { user } = useAppStore();
+  const { user, openAuthModal } = useAppStore();
   const [step, setStep] = useState(0);
   const [cities, setCities] = useState<City[]>([]);
   const [localities, setLocalities] = useState<Locality[]>([]);
@@ -34,7 +34,7 @@ export default function VendorOnboardPage() {
   });
 
   useEffect(() => {
-    if (!user) { router.push('/auth/login'); return; }
+    if (!user) { openAuthModal(); return; }
     locationsApi.getCities().then((d: unknown) => setCities(d as City[])).catch(() => {});
     categoriesApi.getAll().then((d: unknown) => setCategories(d as Category[])).catch(() => {});
   }, [user, router]);

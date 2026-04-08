@@ -40,9 +40,9 @@ export default function FeaturedPackages() {
             <p className="text-xs font-extrabold text-red-600 uppercase tracking-widest mb-2">⭐ Featured Packages</p>
             <h2 className="text-2xl sm:text-3xl font-extrabold text-[#111827]">Ready-made packages — just pick one</h2>
           </div>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="flex gap-4 overflow-x-auto scrollbar-hide -mx-4 px-4 pb-2 sm:grid sm:grid-cols-2 lg:grid-cols-4 sm:overflow-visible sm:mx-0 sm:px-0 sm:pb-0">
             {Array.from({ length: 4 }).map((_, i) => (
-              <div key={i} className="rounded-[20px] bg-white border border-[#e8dbc9] p-5 animate-pulse space-y-3">
+              <div key={i} className="flex-none w-[240px] sm:w-auto rounded-[20px] bg-white border border-[#e8dbc9] p-5 animate-pulse space-y-3">
                 <div className="h-3 bg-[#e8dbc9] rounded w-2/3" />
                 <div className="h-5 bg-[#e8dbc9] rounded w-full" />
                 <div className="h-3 bg-[#e8dbc9] rounded w-1/2" />
@@ -77,12 +77,13 @@ export default function FeaturedPackages() {
           </Link>
         </div>
 
-        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Mobile: horizontal scroll; sm+: 2-col grid; lg+: 4-col grid */}
+        <div className="flex gap-4 overflow-x-auto scrollbar-hide snap-x snap-mandatory -mx-4 px-4 pb-2 sm:grid sm:grid-cols-2 lg:grid-cols-4 sm:overflow-visible sm:mx-0 sm:px-0 sm:pb-0">
           {packages.map((pkg) => (
             <Link
               key={pkg.id}
               href={pkg.vendor?.slug ? `/vendor/${pkg.vendor.slug}` : '/search?q=packages+near+me&nlp=1'}
-              className="group rounded-[20px] border border-[#e8dbc9] bg-white p-5 shadow-sm hover:shadow-md hover:border-red-200 transition-all"
+              className="group flex-none w-[240px] sm:w-auto snap-start rounded-[20px] border border-[#e8dbc9] bg-white p-5 shadow-sm hover:shadow-md hover:border-red-200 transition-all overflow-hidden"
             >
               {/* Category + boost badge */}
               <div className="flex items-center gap-2 mb-2">
@@ -101,7 +102,7 @@ export default function FeaturedPackages() {
                 )}
               </div>
 
-              <h3 className="font-extrabold text-[#111827] leading-snug mb-1 group-hover:text-red-700 transition-colors">
+              <h3 className="font-extrabold text-[#111827] leading-snug mb-1 group-hover:text-red-700 transition-colors line-clamp-2">
                 {pkg.title}
               </h3>
 

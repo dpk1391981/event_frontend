@@ -16,7 +16,7 @@ import {
 export default function Header() {
   const pathname = usePathname();
   const router   = useRouter();
-  const { user, selectedCity, setSelectedCity, logout } = useAppStore();
+  const { user, selectedCity, setSelectedCity, logout, openAuthModal } = useAppStore();
   const [userMenuOpen, setUserMenuOpen]   = useState(false);
   const [mobileOpen, setMobileOpen]       = useState(false);
   const [cityOpen, setCityOpen]           = useState(false);
@@ -293,14 +293,21 @@ export default function Header() {
               </div>
             ) : (
               <>
-                <Link href="/auth/login"
+                <button
+                  onClick={openAuthModal}
                   className="hidden sm:block text-sm font-semibold px-3 py-2 rounded-full text-gray-700 hover:text-red-600 transition">
                   Login
-                </Link>
-                <Link href="/auth/login"
-                  className="bg-gradient-to-r from-red-600 to-rose-600 text-white text-sm font-bold px-3 sm:px-4 py-2 rounded-full hover:from-red-700 hover:to-rose-700 transition shadow-md shadow-red-200 whitespace-nowrap">
-                  Register
-                </Link>
+                </button>
+                {/* On mobile: full pill with icon; on desktop: text only */}
+                <button
+                  onClick={openAuthModal}
+                  className="bg-gradient-to-r from-red-600 to-rose-600 text-white text-sm font-bold px-3 sm:px-4 py-2 rounded-full hover:from-red-700 hover:to-rose-700 active:scale-95 transition shadow-md shadow-red-200 whitespace-nowrap flex items-center gap-1.5">
+                  <svg className="w-3.5 h-3.5 sm:hidden" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                  </svg>
+                  <span className="hidden sm:inline">Register</span>
+                  <span className="sm:hidden">Login</span>
+                </button>
               </>
             )}
 
@@ -323,7 +330,7 @@ export default function Header() {
           <div className="fixed inset-0 z-40 bg-black/40" onClick={() => setMobileOpen(false)} />
 
           {/* Drawer */}
-          <div className="fixed top-14 left-0 right-0 bottom-0 z-50 bg-white flex flex-col overflow-y-auto">
+          <div className="fixed top-14 left-0 right-0 bottom-0 z-50 bg-white flex flex-col overflow-y-auto" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
             {/* City selector row */}
             <div className="px-4 pt-4 pb-2">
               <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Your City</p>
@@ -390,24 +397,31 @@ export default function Header() {
 
             <div className="h-px bg-gray-100 mx-4 my-3" />
 
-            {/* Auth section */}
-            <div className="px-4 pb-8">
+            {/* Auth section — sticky at bottom of drawer */}
+            <div className="mt-auto px-4 pb-6 pt-3 border-t border-gray-100 bg-white">
               {!user ? (
-                <Link href="/auth/login" onClick={() => setMobileOpen(false)}
-                  className="block w-full text-center bg-gradient-to-r from-red-600 to-rose-600 text-white font-bold py-4 rounded-2xl text-base shadow-lg shadow-red-200">
-                  Login / Register
-                </Link>
+                <div className="space-y-2.5">
+                  <button
+                    onClick={() => { setMobileOpen(false); openAuthModal(); }}
+                    className="flex items-center justify-center gap-2 w-full bg-gradient-to-r from-red-600 to-rose-600 text-white font-extrabold py-4 rounded-2xl text-base shadow-lg shadow-red-200 active:scale-[0.98] transition">
+                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                    </svg>
+                    Login / Register — Free
+                  </button>
+                  <p className="text-center text-xs text-gray-400">No password needed · OTP login</p>
+                </div>
               ) : (
                 <div className="flex items-center gap-3 bg-gray-50 rounded-2xl p-4">
-                  <span className="w-10 h-10 rounded-full bg-gradient-to-br from-red-500 to-rose-700 text-white flex items-center justify-center font-extrabold text-sm shadow">
+                  <span className="w-10 h-10 rounded-full bg-gradient-to-br from-red-500 to-rose-700 text-white flex items-center justify-center font-extrabold text-sm shadow shrink-0">
                     {user.name?.[0]?.toUpperCase() || 'U'}
                   </span>
                   <div className="flex-1 min-w-0">
                     <p className="font-bold text-gray-900 text-sm truncate">{user.name}</p>
-                    <p className="text-xs text-gray-400 capitalize">{user.role}</p>
+                    <p className="text-xs text-gray-400 capitalize">{user.role} · {user.phone || ''}</p>
                   </div>
                   <button onClick={() => { logout(); setMobileOpen(false); }}
-                    className="flex items-center gap-1.5 text-xs text-red-600 font-semibold px-3 py-2 rounded-xl bg-red-50 hover:bg-red-100 transition">
+                    className="flex items-center gap-1.5 text-xs text-red-600 font-semibold px-3 py-2.5 rounded-xl bg-red-50 active:bg-red-100 transition shrink-0">
                     <LogoutIcon className="w-3.5 h-3.5" /> Logout
                   </button>
                 </div>

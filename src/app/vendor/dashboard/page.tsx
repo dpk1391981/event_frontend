@@ -7,7 +7,7 @@ import { getVendorPanelData, type VendorPanelData } from '@/lib/vendor-panel';
 import { useAppStore } from '@/store/useAppStore';
 
 export default function VendorDashboardPage() {
-  const { user } = useAppStore();
+  const { user, openAuthModal } = useAppStore();
   const router = useRouter();
   const [panelData, setPanelData] = useState<VendorPanelData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -23,7 +23,7 @@ export default function VendorDashboardPage() {
     if (!hydrated) return;
 
     if (!user) {
-      router.replace('/auth/login?redirect=/vendor/dashboard');
+      openAuthModal();
       return;
     }
 

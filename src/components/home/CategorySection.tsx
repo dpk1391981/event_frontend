@@ -66,9 +66,9 @@ export default function CategorySection() {
     return (
       <section className="py-14 bg-white">
         <div className="max-w-7xl mx-auto px-4">
-          <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="flex gap-4 overflow-x-auto scrollbar-hide -mx-4 px-4 pb-2 sm:grid sm:grid-cols-2 lg:grid-cols-3 sm:overflow-visible sm:mx-0 sm:px-0 sm:pb-0">
             {Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="h-40 rounded-2xl bg-gray-100 animate-pulse" />
+              <div key={i} className="flex-none w-[160px] sm:w-auto h-36 sm:h-40 rounded-2xl bg-gray-100 animate-pulse" />
             ))}
           </div>
         </div>
@@ -90,7 +90,8 @@ export default function CategorySection() {
           </p>
         </div>
 
-        <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+        {/* Mobile: horizontal scroll carousel; sm+: 2-col grid; lg+: 3-col grid */}
+        <div className="flex gap-4 overflow-x-auto scrollbar-hide snap-x snap-mandatory -mx-4 px-4 pb-2 sm:grid sm:grid-cols-2 lg:grid-cols-3 sm:overflow-visible sm:mx-0 sm:px-0 sm:pb-0">
           {categories.map((cat, idx) => {
             const palette = PALETTES[idx % PALETTES.length];
             const href = citySlug
@@ -101,22 +102,22 @@ export default function CategorySection() {
               <Link
                 key={cat.id}
                 href={href}
-                className={`group bg-white border-2 ${palette.border} rounded-2xl p-5 transition-all duration-200 hover:-translate-y-1 hover:shadow-lg block`}
+                className={`group flex-none w-[160px] sm:w-auto bg-white border-2 ${palette.border} rounded-2xl p-4 sm:p-5 transition-all duration-200 hover:-translate-y-1 hover:shadow-lg block snap-start overflow-hidden`}
               >
                 <div className="flex items-start gap-3 mb-3">
-                  <div className={`w-12 h-12 bg-gradient-to-br ${palette.gradient} rounded-xl flex items-center justify-center shadow-md group-hover:scale-110 transition-transform shrink-0`}>
+                  <div className={`w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br ${palette.gradient} rounded-xl flex items-center justify-center shadow-md group-hover:scale-110 transition-transform shrink-0`}>
                     <CategoryIcon icon={cat.icon} />
                   </div>
-                  <div>
-                    <h3 className="font-extrabold text-gray-900 group-hover:text-red-700 transition text-base">{cat.name}</h3>
+                  <div className="min-w-0">
+                    <h3 className="font-extrabold text-gray-900 group-hover:text-red-700 transition text-sm sm:text-base line-clamp-1">{cat.name}</h3>
                   </div>
                 </div>
                 {cat.description && (
                   <p className="text-xs text-gray-500 leading-relaxed mb-3 hidden sm:block line-clamp-2">{cat.description}</p>
                 )}
-                <p className="text-xs text-gray-400 mt-auto flex items-center gap-1 group-hover:text-red-500 transition">
-                  {cat.name}{citySlug ? ` in ${cityName}` : ''}
-                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <p className="text-xs text-gray-400 mt-auto flex items-center gap-1 group-hover:text-red-500 transition truncate">
+                  <span className="truncate">{cat.name}{citySlug ? ` in ${cityName}` : ''}</span>
+                  <svg className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                   </svg>
                 </p>

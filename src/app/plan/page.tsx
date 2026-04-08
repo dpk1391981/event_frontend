@@ -1045,11 +1045,11 @@ function PlanForm({
         <div>
           <label className="text-[10px] font-extrabold text-gray-500 uppercase tracking-widest mb-3 block">Event Type</label>
           {eventCategories.length === 0 ? (
-            <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+            <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-2">
               {[...Array(6)].map((_, i) => <div key={i} className="h-20 bg-gray-100 rounded-xl animate-pulse" />)}
             </div>
           ) : (
-            <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+            <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-2">
               {eventCategories.map(et => (
                 <button key={et.slug} type="button" onClick={() => setForm({ ...form, eventType: et.slug })}
                   className={`p-3 rounded-xl border-2 text-center transition ${form.eventType === et.slug ? 'border-red-600 bg-red-50 shadow-sm' : 'border-gray-100 hover:border-red-200 bg-gray-50 hover:bg-red-50'}`}>
@@ -1062,7 +1062,7 @@ function PlanForm({
         </div>
 
         {/* City, Budget, Guests */}
-        <div className="grid sm:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div>
             <label className="text-[10px] font-extrabold text-gray-500 uppercase tracking-widest mb-2 block">City *</label>
             <select required value={form.cityId} onChange={e => setForm({ ...form, cityId: e.target.value })}
@@ -1302,8 +1302,8 @@ function PlanPageInner() {
           {/* E. Two-column: sidebar + vendor sections */}
           <div className="grid lg:grid-cols-3 gap-5">
 
-            {/* Left sidebar */}
-            <div className="lg:col-span-1 space-y-5">
+            {/* Left sidebar — shows AFTER vendors on mobile */}
+            <div className="lg:col-span-1 space-y-5 order-2 lg:order-1">
               <BudgetBreakdown plan={plan} catMap={catMap} />
               <ShortlistPanel
                 shortlist={shortlist}
@@ -1320,8 +1320,8 @@ function PlanPageInner() {
               </div>
             </div>
 
-            {/* Right: category sections */}
-            <div className="lg:col-span-2 space-y-5">
+            {/* Right: category sections — shows FIRST on mobile */}
+            <div className="lg:col-span-2 space-y-5 order-1 lg:order-2">
               {plan.plan
                 .filter(item => item.category !== 'misc')
                 .map(item => (

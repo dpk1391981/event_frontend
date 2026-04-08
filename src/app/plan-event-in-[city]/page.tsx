@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { notFound } from 'next/navigation';
 import CitySync from './CitySync';
 import TopVendorCarousel from '@/components/home/TopVendorCarousel';
 import CategorySection from '@/components/home/CategorySection';
@@ -10,15 +11,20 @@ import FeaturedPackages from '@/components/home/FeaturedPackages';
 import HeroTicker from '@/components/home/HeroTicker';
 import { StoreIcon, CalendarIcon, StarIcon, CheckCircleIcon, ClipboardIcon, RobotIcon } from '@/components/ui/Icon';
 
+// Render city pages on-demand (SSR) — not statically pre-built at deploy time
+export const dynamic = 'force-dynamic';
+
 interface Props {
   params: { city: string };
 }
 
+function slugToName(slug: string): string {
+  return slug.split('-').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+}
+
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  const cityName = params.city
-    .split('-')
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(' ');
+  if (!params?.city) return { title: 'PlanToday' };
+  const cityName = slugToName(params.city);
   return {
     title: `Plan Your Event in ${cityName} — PlanToday`,
     description: `Find top-rated wedding photographers, caterers, venues, DJs & decorators in ${cityName}. AI-powered vendor matching. Free quotes instantly.`,
@@ -57,11 +63,9 @@ const HOW_IT_WORKS = [
 ];
 
 export default function CityHomePage({ params }: Props) {
+  if (!params?.city) notFound();
   const citySlug = params.city;
-  const cityName = citySlug
-    .split('-')
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(' ');
+  const cityName = slugToName(citySlug);
 
   return (
     <main className="min-h-screen bg-gray-50 overflow-x-hidden">

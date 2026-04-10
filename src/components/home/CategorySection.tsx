@@ -3,72 +3,70 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useAppStore } from '@/store/useAppStore';
-import { categoriesApi, locationsApi } from '@/lib/api';
+import { categoriesApi } from '@/lib/api';
 import { buildSeoUrlFromCategory } from '@/lib/seo-urls';
-import { Category, City } from '@/types';
+import { Category } from '@/types';
 
-/** Cycling palette for category cards — index mod length */
+// Trending score: budgetAllocationPercent (how often used in plans) + inverse sortOrder
+function trendingScore(cat: Category, idx: number): number {
+  const budgetWeight = Number(cat.budgetAllocationPercent || 0);
+  const order = cat.sortOrder !== undefined ? cat.sortOrder : idx;
+  const orderScore = Math.max(0, 100 - order * 8);
+  return budgetWeight * 0.65 + orderScore * 0.35;
+}
+
 const PALETTES = [
-  { gradient: 'from-rose-500 to-pink-600',    lightBg: 'bg-rose-50',    lightText: 'text-rose-700',    border: 'border-rose-200 hover:border-rose-400' },
-  { gradient: 'from-blue-500 to-indigo-600',  lightBg: 'bg-blue-50',    lightText: 'text-blue-700',    border: 'border-blue-200 hover:border-blue-400' },
-  { gradient: 'from-orange-500 to-amber-500', lightBg: 'bg-orange-50',  lightText: 'text-orange-700',  border: 'border-orange-200 hover:border-orange-400' },
-  { gradient: 'from-teal-500 to-cyan-600',    lightBg: 'bg-teal-50',    lightText: 'text-teal-700',    border: 'border-teal-200 hover:border-teal-400' },
-  { gradient: 'from-emerald-500 to-green-600',lightBg: 'bg-emerald-50', lightText: 'text-emerald-700', border: 'border-emerald-200 hover:border-emerald-400' },
-  { gradient: 'from-purple-500 to-violet-600',lightBg: 'bg-purple-50',  lightText: 'text-purple-700',  border: 'border-purple-200 hover:border-purple-400' },
-  { gradient: 'from-pink-500 to-fuchsia-600', lightBg: 'bg-pink-50',    lightText: 'text-pink-700',    border: 'border-pink-200 hover:border-pink-400' },
-  { gradient: 'from-sky-500 to-blue-600',     lightBg: 'bg-sky-50',     lightText: 'text-sky-700',     border: 'border-sky-200 hover:border-sky-400' },
+  { gradient: 'from-rose-500 to-pink-600',     light: 'bg-rose-50',    text: 'text-rose-700',    border: 'border-rose-200',    ring: 'ring-rose-400'    },
+  { gradient: 'from-blue-500 to-indigo-600',   light: 'bg-blue-50',    text: 'text-blue-700',    border: 'border-blue-200',    ring: 'ring-blue-400'    },
+  { gradient: 'from-orange-500 to-amber-500',  light: 'bg-orange-50',  text: 'text-orange-700',  border: 'border-orange-200',  ring: 'ring-orange-400'  },
+  { gradient: 'from-teal-500 to-cyan-600',     light: 'bg-teal-50',    text: 'text-teal-700',    border: 'border-teal-200',    ring: 'ring-teal-400'    },
+  { gradient: 'from-purple-500 to-violet-600', light: 'bg-purple-50',  text: 'text-purple-700',  border: 'border-purple-200',  ring: 'ring-purple-400'  },
 ];
 
-function CategoryIcon({ icon, className = 'w-6 h-6 text-white' }: { icon?: string; className?: string }) {
-  // If icon is an emoji or short string, render as text
-  if (icon && icon.length <= 4) {
-    return <span className="text-2xl leading-none">{icon}</span>;
-  }
-  // Default generic icon
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 10h16M4 14h16M4 18h16" />
-    </svg>
-  );
-}
+const TRENDING_LABELS = ['🔥 #1 Trending', '⭐ Popular', '📈 Rising', '✨ In Demand', '💡 Top Pick'];
 
 export default function CategorySection() {
   const { selectedCity } = useAppStore();
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [cities, setCities] = useState<City[]>([]);
+  const [all, setAll] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
 
   const citySlug = selectedCity?.slug || '';
   const cityName = selectedCity?.name || 'Your City';
 
   useEffect(() => {
-    Promise.all([
-      categoriesApi.getAll(),
-      locationsApi.getCities(),
-    ]).then(([cats, ctys]) => {
-      setCategories(((cats as unknown) as Category[]).filter((c) => c.isActive !== false));
-      setCities((ctys as unknown) as City[]);
-    }).catch(() => {}).finally(() => setLoading(false));
+    categoriesApi.getAll()
+      .then((res: unknown) => {
+        // API may return [] directly or { data: [] } — handle both
+        const list: Category[] = Array.isArray(res)
+          ? res
+          : Array.isArray((res as { data?: unknown })?.data)
+          ? (res as { data: Category[] }).data
+          : [];
+        // Include all active categories; filter by type only when field is present
+        const cats = list.filter(c =>
+          c.isActive !== false && (!c.type || c.type === 'service'),
+        );
+        setAll(cats);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
   }, []);
 
-  // Cross-city links: pair first few cities with first few categories
-  const crossCityLinks = (() => {
-    const links: { city: City; cat: Category }[] = [];
-    const otherCities = cities.filter((c) => c.id !== selectedCity?.id).slice(0, 6);
-    otherCities.forEach((city, i) => {
-      const cat = categories[i % categories.length];
-      if (cat) links.push({ city, cat });
-    });
-    return links;
-  })();
+  // Score and take top 5 trending categories
+  const trending = [...all]
+    .map((cat, idx) => ({ cat, score: trendingScore(cat, idx) }))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 5)
+    .map(({ cat }) => cat);
 
   if (loading) {
     return (
-      <section className="py-14 bg-white">
-        <div className="max-w-7xl mx-auto px-4">
-          <div className="flex gap-4 overflow-x-auto scrollbar-hide -mx-4 px-4 pb-2 sm:grid sm:grid-cols-2 lg:grid-cols-3 sm:overflow-visible sm:mx-0 sm:px-0 sm:pb-0">
-            {Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="flex-none w-[160px] sm:w-auto h-36 sm:h-40 rounded-2xl bg-gray-100 animate-pulse" />
+      <section className="py-10 bg-white">
+        <div className="max-w-xl mx-auto px-4">
+          <div className="h-6 w-40 bg-gray-100 rounded-full animate-pulse mb-4 mx-auto" />
+          <div className="grid grid-cols-2 gap-3">
+            {[...Array(5)].map((_, i) => (
+              <div key={i} className={`h-24 bg-gray-100 rounded-2xl animate-pulse ${i === 4 ? 'col-span-2' : ''}`} />
             ))}
           </div>
         </div>
@@ -76,24 +74,36 @@ export default function CategorySection() {
     );
   }
 
+  if (trending.length === 0) return null;
+
   return (
-    <section className="py-14 bg-white">
-      <div className="max-w-7xl mx-auto px-4">
-        <div className="text-center max-w-2xl mx-auto mb-10">
-          <p className="text-xs font-extrabold text-red-500 uppercase tracking-widest mb-2">Browse by Category</p>
-          <h2 className="text-2xl sm:text-3xl font-extrabold text-gray-900 mb-3">
-            Find the Right Vendor for
-            <br /><span className="text-red-500">Every Occasion</span>
-          </h2>
-          <p className="text-gray-500 text-sm">
-            Explore verified vendors across all event categories{selectedCity ? ` in ${cityName}` : ''}
-          </p>
+    <section className="py-10 bg-white">
+      <div className="max-w-xl mx-auto px-4">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-5">
+          <div>
+            <p className="text-[10px] font-extrabold text-red-500 uppercase tracking-widest mb-0.5">Categories</p>
+            <h2 className="text-xl font-extrabold text-gray-900 leading-tight">
+              Trending Services
+              {selectedCity && <span className="text-gray-400 font-semibold"> in {cityName}</span>}
+            </h2>
+          </div>
+          <Link
+            href="/search"
+            className="text-xs font-bold text-red-600 hover:text-red-700 flex items-center gap-0.5 shrink-0"
+          >
+            View all
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
+            </svg>
+          </Link>
         </div>
 
-        {/* Mobile: horizontal scroll carousel; sm+: 2-col grid; lg+: 3-col grid */}
-        <div className="flex gap-4 overflow-x-auto scrollbar-hide snap-x snap-mandatory -mx-4 px-4 pb-2 sm:grid sm:grid-cols-2 lg:grid-cols-3 sm:overflow-visible sm:mx-0 sm:px-0 sm:pb-0">
-          {categories.map((cat, idx) => {
+        {/* Top 5 grid — 2 cols, last item spans full width if odd */}
+        <div className="grid grid-cols-2 gap-3">
+          {trending.map((cat, idx) => {
             const palette = PALETTES[idx % PALETTES.length];
+            const isLast = idx === trending.length - 1 && trending.length % 2 !== 0;
             const href = citySlug
               ? buildSeoUrlFromCategory(cat, citySlug)
               : `/search?q=${encodeURIComponent(cat.name)}&nlp=1`;
@@ -102,45 +112,61 @@ export default function CategorySection() {
               <Link
                 key={cat.id}
                 href={href}
-                className={`group flex-none w-[160px] sm:w-auto bg-white border-2 ${palette.border} rounded-2xl p-4 sm:p-5 transition-all duration-200 hover:-translate-y-1 hover:shadow-lg block snap-start overflow-hidden`}
+                className={`group relative bg-white border-2 ${palette.border} rounded-2xl p-4 flex flex-col gap-3 active:scale-[0.97] transition-all duration-150 overflow-hidden ${isLast ? 'col-span-2 flex-row items-center' : ''}`}
               >
-                <div className="flex items-start gap-3 mb-3">
-                  <div className={`w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br ${palette.gradient} rounded-xl flex items-center justify-center shadow-md group-hover:scale-110 transition-transform shrink-0`}>
-                    <CategoryIcon icon={cat.icon} />
-                  </div>
-                  <div className="min-w-0">
-                    <h3 className="font-extrabold text-gray-900 group-hover:text-red-700 transition text-sm sm:text-base line-clamp-1">{cat.name}</h3>
-                  </div>
+                {/* Trending label badge */}
+                <span className={`absolute top-3 right-3 text-[9px] font-extrabold uppercase tracking-wide px-2 py-0.5 rounded-full ${palette.light} ${palette.text}`}>
+                  {TRENDING_LABELS[idx]}
+                </span>
+
+                {/* Icon */}
+                <div className={`w-12 h-12 bg-gradient-to-br ${palette.gradient} rounded-xl flex items-center justify-center shadow-md group-active:scale-95 transition-transform shrink-0`}>
+                  {cat.icon && cat.icon.length <= 4 ? (
+                    <span className="text-2xl leading-none">{cat.icon}</span>
+                  ) : (
+                    <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+                    </svg>
+                  )}
                 </div>
-                {cat.description && (
-                  <p className="text-xs text-gray-500 leading-relaxed mb-3 hidden sm:block line-clamp-2">{cat.description}</p>
-                )}
-                <p className="text-xs text-gray-400 mt-auto flex items-center gap-1 group-hover:text-red-500 transition truncate">
-                  <span className="truncate">{cat.name}{citySlug ? ` in ${cityName}` : ''}</span>
-                  <svg className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                  </svg>
-                </p>
+
+                {/* Name & arrow */}
+                <div className={`min-w-0 ${isLast ? 'flex-1' : ''}`}>
+                  <h3 className="font-extrabold text-gray-900 text-sm leading-tight mb-0.5 line-clamp-1 group-active:text-red-700 transition-colors pr-6">
+                    {cat.name}
+                  </h3>
+                  {cat.description && (
+                    <p className="text-xs text-gray-400 line-clamp-1 hidden sm:block">{cat.description}</p>
+                  )}
+                  <span className="text-xs text-gray-400 flex items-center gap-0.5 mt-1">
+                    Explore
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
+                    </svg>
+                  </span>
+                </div>
               </Link>
             );
           })}
         </div>
 
-        {/* Cross-city SEO links — generated dynamically from DB cities + categories */}
-        {crossCityLinks.length > 0 && (
-          <div className="mt-10 pt-8 border-t border-gray-100">
-            <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4 text-center">Popular in Other Cities</p>
-            <div className="flex flex-wrap justify-center gap-3">
-              {crossCityLinks.map(({ city, cat }) => (
-                <Link
-                  key={`${cat.slug}-${city.slug}`}
-                  href={buildSeoUrlFromCategory(cat, city.slug)}
-                  className="text-xs text-gray-600 hover:text-red-600 border border-gray-200 hover:border-red-200 px-3 py-1.5 rounded-full transition bg-white hover:bg-red-50"
-                >
-                  {cat.name} in {city.name}
-                </Link>
-              ))}
-            </div>
+        {/* SEO cross-city links — visually subtle */}
+        {citySlug && all.length > 5 && (
+          <div className="mt-5 flex flex-wrap gap-2 justify-center">
+            {all.slice(5, 8).map(cat => (
+              <Link
+                key={cat.id}
+                href={citySlug ? buildSeoUrlFromCategory(cat, citySlug) : `/search?q=${encodeURIComponent(cat.name)}&nlp=1`}
+                className="text-xs text-gray-500 hover:text-red-600 border border-gray-200 hover:border-red-200 px-3 py-1.5 rounded-full transition bg-white"
+              >
+                {cat.name}
+              </Link>
+            ))}
+            {all.length > 8 && (
+              <Link href="/search" className="text-xs text-gray-500 hover:text-red-600 border border-gray-200 px-3 py-1.5 rounded-full transition bg-white">
+                +{all.length - 8} more
+              </Link>
+            )}
           </div>
         )}
       </div>

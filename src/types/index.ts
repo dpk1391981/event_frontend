@@ -257,3 +257,90 @@ export interface EventPlan {
     data_missing?: boolean;
   }>;
 }
+
+// ─── AI Event Planning Engine types ──────────────────────────────────────────
+
+export interface PackageService {
+  category: string;
+  vendorId: number;
+  vendorName: string;
+  vendorSlug: string;
+  price: number;
+  rating: number;
+  fitScore: number;
+  reason: string;
+  logo?: string;
+}
+
+export interface CustomizationOption {
+  category: string;
+  alternativeVendors: Array<{
+    vendorId: number;
+    vendorName: string;
+    price: number;
+    rating: number;
+    fitScore: number;
+  }>;
+}
+
+export interface EventPackage {
+  name: string;
+  tag: 'Recommended' | 'Budget' | 'Premium';
+  totalBudget: number;
+  estimatedCost: number;
+  pricePerGuest: number;
+  savings: number;
+  platformMargin: number;
+  confidenceScore: number;
+  services: PackageService[];
+  customizationOptions: CustomizationOption[];
+}
+
+export interface TrendingPackage {
+  name: string;
+  tag: 'Trending';
+  eventType: string;
+  estimatedCost: number;
+  pricePerGuest: number;
+  popularityScore: number;
+  servicesSummary: string[];
+}
+
+export interface TopPackage {
+  name: string;
+  tag: 'Recommended' | 'Budget' | 'Premium';
+  eventType: string;
+  cityId: number;
+  estimatedCost: number;
+  pricePerGuest: number;
+  highlight: string;
+}
+
+export interface ComparePackages {
+  categories: string[];
+  comparison: Array<{
+    packageName: string;
+    tag: string;
+    totalCost: number;
+    pricePerGuest: number;
+    ratingScore: number;
+    keyDifferences: string[];
+  }>;
+}
+
+export interface EventPlanV2 {
+  recommended: EventPackage;
+  alternatives: EventPackage[];
+  breakdown: Record<string, number>;
+  topPackages: TopPackage[];
+  trendingPackages: TrendingPackage[];
+  comparePackages: ComparePackages;
+  meta: {
+    confidenceScore: number;
+    generatedAt: string;
+    cityId: number;
+    eventType: string;
+    totalBudget: number;
+    guestCount?: number;
+  };
+}

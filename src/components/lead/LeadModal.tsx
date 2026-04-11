@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { Vendor, VendorPackage } from '@/types';
 import { leadsApi } from '@/lib/api';
+import { useAppStore } from '@/store/useAppStore';
 
 interface Props {
   vendor: Vendor;
@@ -23,10 +24,11 @@ function fmt(n: number) {
 export default function LeadModal({
   vendor, onClose, searchQuery, budget, guestCount, eventDate, selectedPackage,
 }: Props) {
+  const user = useAppStore((s) => s.user);
   const [form, setForm] = useState({
-    contactName: '',
-    contactPhone: '',
-    contactEmail: '',
+    contactName: user?.name || '',
+    contactPhone: user?.phone || '',
+    contactEmail: user?.email || '',
     requirement: selectedPackage
       ? `Interested in: ${selectedPackage.title}`
       : '',

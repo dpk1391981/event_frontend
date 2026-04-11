@@ -6,6 +6,7 @@ interface Props {
   pkg: VendorPackage;
   onBook?: (pkg: VendorPackage) => void;
   compact?: boolean;
+  listView?: boolean; // desktop horizontal list card
 }
 
 const TAG_STYLE: Record<string, string> = {
@@ -15,16 +16,121 @@ const TAG_STYLE: Record<string, string> = {
   luxury:   'bg-amber-100 text-amber-700 border-amber-200',
 };
 
+const TAG_BORDER: Record<string, string> = {
+  budget:   'border-l-blue-500',
+  standard: 'border-l-gray-400',
+  premium:  'border-l-purple-500',
+  luxury:   'border-l-amber-500',
+};
+
 function fmt(n: number) {
   if (n >= 100000) return `₹${(n / 100000).toFixed(n % 100000 === 0 ? 0 : 1)}L`;
   if (n >= 1000)   return `₹${Math.round(n / 1000)}K`;
   return `₹${n}`;
 }
 
-export default function PackageCard({ pkg, onBook, compact = false }: Props) {
+export default function PackageCard({ pkg, onBook, compact = false, listView = false }: Props) {
   const savings = Math.round(Number(pkg.savingsPercent ?? 0));
   const tagStyle = pkg.tag ? TAG_STYLE[pkg.tag] : null;
+  const tagBorder = pkg.tag ? TAG_BORDER[pkg.tag] : 'border-l-red-400';
 
+  // ── Desktop list view ────────────────────────────────────────────────────────
+  if (listView) {
+    return (
+      <div className={`bg-white rounded-xl border border-gray-100 border-l-4 ${tagBorder} shadow-sm hover:shadow-md transition-all duration-200 flex gap-0 overflow-hidden`}>
+        {/* Left: category icon strip */}
+        <div className="w-1 shrink-0" />
+
+        {/* Center: main info */}
+        <div className="flex-1 min-w-0 px-5 py-4 flex items-center gap-5">
+          {/* Title + vendor */}
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 flex-wrap mb-1">
+              {pkg.category?.name && (
+                <span className="text-[10px] font-bold uppercase tracking-widest text-red-600">
+                  {pkg.category.name}
+                </span>
+              )}
+              {tagStyle && (
+                <span className={`rounded-full border px-2 py-0.5 text-[9px] font-bold capitalize ${tagStyle}`}>
+                  {pkg.tag}
+                </span>
+              )}
+              {pkg.isBoosted && (
+                <span className="rounded-full bg-amber-400 px-2 py-0.5 text-[9px] font-bold text-amber-900">⚡ BOOSTED</span>
+              )}
+              {pkg.isFeatured && (
+                <span className="rounded-full bg-red-600 px-2 py-0.5 text-[9px] font-bold text-white">⭐ FEATURED</span>
+              )}
+            </div>
+            <h3 className="font-extrabold text-gray-900 text-sm leading-snug">{pkg.title}</h3>
+            {pkg.vendor?.businessName && (
+              <p className="text-xs text-gray-500 mt-0.5">{pkg.vendor.businessName}
+                {pkg.city?.name && <span className="text-gray-400"> · {pkg.city.name}</span>}
+              </p>
+            )}
+          </div>
+
+          {/* Includes chips */}
+          {pkg.includes && pkg.includes.length > 0 && (
+            <div className="hidden md:flex flex-wrap gap-1.5 max-w-sm">
+              {pkg.includes.slice(0, 4).map((item) => (
+                <span
+                  key={item}
+                  className="inline-flex items-center gap-1 rounded-full border border-gray-100 bg-gray-50 px-2.5 py-0.5 text-[10px] font-semibold text-gray-600"
+                >
+                  <svg className="w-2.5 h-2.5 text-emerald-500 shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                  </svg>
+                  {item}
+                </span>
+              ))}
+              {pkg.includes.length > 4 && (
+                <span className="text-[10px] font-semibold text-gray-400">+{pkg.includes.length - 4} more</span>
+              )}
+            </div>
+          )}
+
+          {/* Stats */}
+          <div className="hidden lg:flex items-center gap-4 shrink-0 text-[11px] text-gray-400">
+            {(pkg.minGuests || pkg.maxGuests) && (
+              <span>👥 {pkg.minGuests ?? ''}{pkg.minGuests && pkg.maxGuests ? '–' : ''}{pkg.maxGuests ?? ''}</span>
+            )}
+            {pkg.leadsCount > 0 && (
+              <span className="text-emerald-600 font-semibold">{pkg.leadsCount} booked</span>
+            )}
+          </div>
+        </div>
+
+        {/* Right: price + CTA */}
+        <div className="shrink-0 flex flex-col items-end justify-center gap-2 px-5 py-4 border-l border-gray-100 min-w-[140px]">
+          <div className="text-right">
+            {savings > 0 && pkg.originalPrice && (
+              <p className="text-[10px] text-gray-400 line-through">{fmt(Number(pkg.originalPrice))}</p>
+            )}
+            <p className="text-lg font-extrabold text-red-600">
+              {fmt(Number(pkg.price))}{pkg.priceType === 'per_person' ? '/pp' : ''}
+            </p>
+            {savings > 0 && (
+              <span className="inline-block rounded-full bg-emerald-100 px-2 py-0.5 text-[9px] font-bold text-emerald-700">
+                {savings}% off
+              </span>
+            )}
+          </div>
+          {onBook && (
+            <button
+              onClick={() => onBook(pkg)}
+              className="bg-red-600 text-white text-xs font-bold px-4 py-2 rounded-lg hover:bg-red-700 active:bg-red-800 transition shadow-sm whitespace-nowrap"
+            >
+              Get Best Price
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // ── Card view (mobile grid / compact carousel) ───────────────────────────────
   return (
     <div className={`bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 overflow-hidden ${compact ? '' : 'flex flex-col'}`}>
       {/* Top bar */}

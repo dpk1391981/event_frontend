@@ -38,7 +38,7 @@ function isGenericPackageQuery(q: string) {
   );
 }
 
-/* ─── Mini horizontal package carousel ─────────────────────────────────────── */
+/* ─── Featured packages auto-scroll carousel ────────────────────────────────── */
 
 function PackageCarousel({
   title, badge, packages, onBook,
@@ -51,6 +51,7 @@ function PackageCarousel({
   const scrollRef = useRef<HTMLDivElement>(null);
   const [canLeft, setCanLeft]   = useState(false);
   const [canRight, setCanRight] = useState(false);
+  const pausedRef = useRef(false);
 
   const update = () => {
     const el = scrollRef.current;
@@ -67,8 +68,29 @@ function PackageCarousel({
     return () => el.removeEventListener('scroll', update);
   }, [packages]);
 
-  const scroll = (dir: 'l' | 'r') =>
+  // Auto-scroll: advance one card every 3 s, loop back to start
+  useEffect(() => {
+    if (packages.length <= 1) return;
+    const CARD_W = 266; // 250px card + 16px gap
+    const interval = setInterval(() => {
+      if (pausedRef.current) return;
+      const el = scrollRef.current;
+      if (!el) return;
+      const maxScroll = el.scrollWidth - el.clientWidth;
+      if (el.scrollLeft >= maxScroll - 8) {
+        el.scrollTo({ left: 0, behavior: 'smooth' });
+      } else {
+        el.scrollBy({ left: CARD_W, behavior: 'smooth' });
+      }
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [packages.length]);
+
+  const scroll = (dir: 'l' | 'r') => {
+    pausedRef.current = true;
+    setTimeout(() => { pausedRef.current = false; }, 8000); // resume after 8 s
     scrollRef.current?.scrollBy({ left: dir === 'r' ? 540 : -540, behavior: 'smooth' });
+  };
 
   if (!packages.length) return null;
 
@@ -104,12 +126,15 @@ function PackageCarousel({
         </div>
       </div>
 
-      <div className="relative">
+      <div className="relative"
+        onMouseEnter={() => { pausedRef.current = true; }}
+        onMouseLeave={() => { pausedRef.current = false; }}
+      >
         {canLeft  && <div className="pointer-events-none absolute left-0 top-0 bottom-0 w-12 bg-gradient-to-r from-gray-50 to-transparent z-10" />}
         {canRight && <div className="pointer-events-none absolute right-0 top-0 bottom-0 w-12 bg-gradient-to-l from-gray-50 to-transparent z-10" />}
         <div
           ref={scrollRef}
-          className="flex gap-3 overflow-x-auto scrollbar-hide snap-x snap-mandatory pb-1"
+          className="flex gap-4 overflow-x-auto scrollbar-hide snap-x snap-mandatory pb-1"
         >
           {packages.map((pkg) => (
             <div key={pkg.id} className="flex-none w-[250px] snap-start">
@@ -126,19 +151,30 @@ function PackageCarousel({
 
 function PackageGridSkeleton() {
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-      {[...Array(6)].map((_, i) => (
-        <div key={i} className="bg-white rounded-2xl border border-gray-100 p-4 space-y-3 animate-pulse">
-          <div className="h-3 bg-gray-200 rounded w-1/3" />
-          <div className="h-5 bg-gray-200 rounded w-3/4" />
-          <div className="h-3 bg-gray-100 rounded w-1/2" />
-          <div className="flex gap-1.5">
-            {[...Array(3)].map((_, j) => <div key={j} className="h-5 bg-gray-100 rounded-full w-20" />)}
+    <>
+      {/* Mobile skeleton: 2-col grid */}
+      <div className="grid grid-cols-2 gap-3 lg:hidden">
+        {[...Array(6)].map((_, i) => (
+          <div key={i} className="bg-white rounded-2xl border border-gray-100 p-4 space-y-3 animate-pulse">
+            <div className="h-3 bg-gray-200 rounded w-1/3" />
+            <div className="h-5 bg-gray-200 rounded w-3/4" />
+            <div className="h-3 bg-gray-100 rounded w-1/2" />
+            <div className="h-9 bg-gray-100 rounded-xl mt-2" />
           </div>
-          <div className="h-9 bg-gray-100 rounded-xl mt-2" />
-        </div>
-      ))}
-    </div>
+        ))}
+      </div>
+      {/* Desktop skeleton: list */}
+      <div className="hidden lg:flex flex-col gap-3">
+        {[...Array(6)].map((_, i) => (
+          <div key={i} className="bg-white rounded-xl border border-gray-100 h-16 animate-pulse flex items-center px-5 gap-4">
+            <div className="h-4 bg-gray-200 rounded w-1/4" />
+            <div className="flex-1 h-3 bg-gray-100 rounded" />
+            <div className="h-4 bg-gray-200 rounded w-20" />
+            <div className="h-8 bg-gray-100 rounded-lg w-28" />
+          </div>
+        ))}
+      </div>
+    </>
   );
 }
 
@@ -365,7 +401,7 @@ function SearchPageInner() {
   const [activeTab, setActiveTab] = useState<'packages' | 'vendors'>(isPackagesMode ? 'packages' : 'vendors');
 
   const [result, setResult]           = useState<SearchResult | null>(null);
-  const [loading, setLoading]         = useState(!isPackagesMode);
+  const [loading, setLoading]         = useState(true);
   const [cities, setCities]           = useState<City[]>([]);
   const [categories, setCategories]   = useState<Category[]>([]);
   const [localities, setLocalities]   = useState<Locality[]>([]);
@@ -423,15 +459,14 @@ function SearchPageInner() {
 
   // Vendor search (NLP or normal)
   const doVendorSearch = useCallback(async () => {
-    if (isPackagesMode) return;
     setLoading(true);
     try {
       let data: SearchResult;
-      if (isNlp) {
+      if (isNlp && query) {
         data = await searchApi.nlpSearch(query, filters.cityId || undefined, filters.eventDate || undefined, filters.eventTime || undefined) as unknown as SearchResult;
       } else {
         data = await searchApi.search({
-          q: query,
+          q: (!isPackagesMode && query) ? query : undefined,
           cityId: filters.cityId || undefined,
           categoryId: filters.categoryId || undefined,
           maxBudget: filters.maxBudget || undefined,
@@ -474,7 +509,8 @@ function SearchPageInner() {
         ...(sortToParams[filters.sortBy] ?? {}),
       }) as unknown as { data: VendorPackage[]; meta: { total: number; page: number; limit: number } };
 
-      setAllPackages(res.data ?? []);
+      const packages = res.data ?? [];
+      setAllPackages(packages);
       setPkgTotal(res.meta?.total ?? 0);
     } catch { setAllPackages([]); setPkgTotal(0); }
     finally { setPkgLoading(false); }
@@ -526,6 +562,13 @@ function SearchPageInner() {
     setSelectedPackage(pkg);
     setSelectedVendor(pkg.vendor as any);
   };
+
+  // Deduplicate main grid — exclude packages already shown in carousels
+  const showcaseIds = new Set([
+    ...featuredPkgs.map((p) => p.id),
+    ...popularPkgs.map((p) => p.id),
+  ]);
+  const gridPackages = allPackages.filter((p) => !showcaseIds.has(p.id));
 
   /* Quick-sort chips for packages tab */
   const SORT_CHIPS = [
@@ -730,14 +773,21 @@ function SearchPageInner() {
                   </div>
                 )}
 
-                {/* Main grid */}
+                {/* Main listing — list on desktop, 2-col grid on mobile */}
                 {pkgLoading ? (
                   <PackageGridSkeleton />
-                ) : allPackages.length > 0 ? (
+                ) : gridPackages.length > 0 ? (
                   <>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-                      {allPackages.map((pkg) => (
+                    {/* Mobile: 2-column grid */}
+                    <div className="grid grid-cols-2 gap-3 lg:hidden">
+                      {gridPackages.map((pkg) => (
                         <PackageCard key={pkg.id} pkg={pkg} onBook={handleBook} />
+                      ))}
+                    </div>
+                    {/* Desktop: list view */}
+                    <div className="hidden lg:flex flex-col gap-3">
+                      {gridPackages.map((pkg) => (
+                        <PackageCard key={pkg.id} pkg={pkg} onBook={handleBook} listView />
                       ))}
                     </div>
 
@@ -745,18 +795,18 @@ function SearchPageInner() {
                     {pkgTotal > PKG_LIMIT && (
                       <div className="mt-8 flex justify-center gap-2 overflow-x-auto scrollbar-hide pb-1">
                         <button
-                          onClick={() => setPkgPage((p) => Math.max(1, p - 1))}
+                          onClick={() => { setPkgPage((p) => Math.max(1, p - 1)); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
                           disabled={pkgPage === 1}
                           className="w-10 h-10 rounded-full border border-gray-200 text-gray-600 hover:border-red-400 disabled:opacity-40 transition flex items-center justify-center font-bold"
                         >‹</button>
                         {[...Array(Math.min(Math.ceil(pkgTotal / PKG_LIMIT), 10))].map((_, i) => (
-                          <button key={i} onClick={() => setPkgPage(i + 1)}
+                          <button key={i} onClick={() => { setPkgPage(i + 1); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
                             className={`w-10 h-10 rounded-full text-sm font-bold transition ${pkgPage === i + 1 ? 'bg-red-600 text-white shadow-md' : 'bg-white border border-gray-200 text-gray-600 hover:border-red-400 hover:text-red-600'}`}>
                             {i + 1}
                           </button>
                         ))}
                         <button
-                          onClick={() => setPkgPage((p) => Math.min(Math.ceil(pkgTotal / PKG_LIMIT), p + 1))}
+                          onClick={() => { setPkgPage((p) => Math.min(Math.ceil(pkgTotal / PKG_LIMIT), p + 1)); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
                           disabled={pkgPage >= Math.ceil(pkgTotal / PKG_LIMIT)}
                           className="w-10 h-10 rounded-full border border-gray-200 text-gray-600 hover:border-red-400 disabled:opacity-40 transition flex items-center justify-center font-bold"
                         >›</button>
@@ -764,7 +814,7 @@ function SearchPageInner() {
                     )}
                   </>
                 ) : (
-                  !pkgLoading && featuredPkgs.length === 0 && popularPkgs.length === 0 && (
+                  !pkgLoading && gridPackages.length === 0 && featuredPkgs.length === 0 && popularPkgs.length === 0 && (
                     <div className="text-center py-20">
                       <div className="text-6xl mb-4">📦</div>
                       <h3 className="text-lg font-extrabold text-gray-800 mb-2">No packages found</h3>
@@ -810,15 +860,15 @@ function SearchPageInner() {
                     )}
                     {result.meta.pages > 1 && (
                       <div className="mt-8 flex justify-center gap-2 overflow-x-auto scrollbar-hide pb-1">
-                        <button onClick={() => updateFilter('page', Math.max(1, filters.page - 1))} disabled={filters.page === 1}
+                        <button onClick={() => { updateFilter('page', Math.max(1, filters.page - 1)); window.scrollTo({ top: 0, behavior: 'smooth' }); }} disabled={filters.page === 1}
                           className="w-10 h-10 rounded-full border border-gray-200 text-gray-600 hover:border-red-400 disabled:opacity-40 transition flex items-center justify-center">‹</button>
                         {[...Array(Math.min(result.meta.pages, 10))].map((_, i) => (
-                          <button key={i} onClick={() => updateFilter('page', i + 1)}
+                          <button key={i} onClick={() => { updateFilter('page', i + 1); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
                             className={`w-10 h-10 rounded-full text-sm font-bold transition ${filters.page === i + 1 ? 'bg-red-600 text-white shadow-md' : 'bg-white border border-gray-200 text-gray-600 hover:border-red-400 hover:text-red-600'}`}>
                             {i + 1}
                           </button>
                         ))}
-                        <button onClick={() => updateFilter('page', Math.min(result.meta.pages, filters.page + 1))} disabled={filters.page === result.meta.pages}
+                        <button onClick={() => { updateFilter('page', Math.min(result.meta.pages, filters.page + 1)); window.scrollTo({ top: 0, behavior: 'smooth' }); }} disabled={filters.page === result.meta.pages}
                           className="w-10 h-10 rounded-full border border-gray-200 text-gray-600 hover:border-red-400 disabled:opacity-40 transition flex items-center justify-center">›</button>
                       </div>
                     )}

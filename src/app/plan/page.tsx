@@ -7,6 +7,7 @@ import { searchApi, locationsApi } from '@/lib/api';
 import { City, EventPlanV2, EventPackage, PackageService, Vendor } from '@/types';
 import LeadModal from '@/components/lead/LeadModal';
 import PackageCard from '@/components/packages/PackageCard';
+import { Analytics } from '@/lib/analytics';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -83,12 +84,17 @@ const BUDGET_PRESETS = [
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-const fmt = (n: number) =>
-  n >= 100000
-    ? `₹${(n / 100000).toFixed(n % 100000 === 0 ? 0 : 1)}L`
-    : `₹${Math.round(n / 1000)}K`;
+/** Format a price — never returns ₹0K for small amounts */
+const fmt = (n: number): string => {
+  if (!n || n <= 0) return '—';
+  if (n >= 10000000) return `₹${(n / 10000000).toFixed(1)}Cr`;
+  if (n >= 100000) return `₹${(n / 100000).toFixed(n % 100000 === 0 ? 0 : 1)}L`;
+  if (n >= 1000) return `₹${Math.round(n / 1000)}K`;
+  return `₹${Math.round(n)}`;
+};
 
-const fmtFull = (n: number) => `₹${n.toLocaleString('en-IN')}`;
+const fmtFull = (n: number): string =>
+  n > 0 ? `₹${n.toLocaleString('en-IN')}` : '—';
 const catIcon = (s: string) => CAT_ICONS[s] || '✨';
 const catLabel = (s: string) => s.replace(/[_-]/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 
@@ -214,7 +220,7 @@ function ServiceRow({ svc, compact = false }: { svc: PackageService; compact?: b
           <p className="text-xs text-gray-400">{catLabel(svc.category)}</p>
         </div>
         <div className="text-right shrink-0">
-          <p className="text-sm font-bold text-gray-900">{fmt(svc.price)}</p>
+          <p className="text-sm font-bold text-gray-900">{svc.price > 0 ? fmt(svc.price) : 'On request'}</p>
           <p className="text-[10px] text-yellow-600 font-semibold">{svc.rating.toFixed(1)}★</p>
         </div>
       </div>
@@ -232,7 +238,7 @@ function ServiceRow({ svc, compact = false }: { svc: PackageService; compact?: b
         <p className="text-[11px] text-gray-500 line-clamp-1">{svc.reason}</p>
       </div>
       <div className="text-right shrink-0 min-w-[52px]">
-        <p className="text-sm font-extrabold text-gray-900">{fmt(svc.price)}</p>
+        <p className="text-sm font-extrabold text-gray-900">{svc.price > 0 ? fmt(svc.price) : 'On request'}</p>
         <p className="text-[10px] text-yellow-600 font-semibold">{svc.rating.toFixed(1)}★</p>
         {/* Fit score bar */}
         <div className="w-10 h-0.5 bg-gray-100 rounded-full mt-1 ml-auto">
@@ -243,7 +249,7 @@ function ServiceRow({ svc, compact = false }: { svc: PackageService; compact?: b
   );
 }
 
-// ─── Primary Package Card ──────────────────────────────────────────────────────
+// ─── Primary Package Card — premium redesign ─────────────────────────────────
 
 function PrimaryPackageCard({
   pkg,
@@ -260,133 +266,180 @@ function PrimaryPackageCard({
 }) {
   const [expanded, setExpanded] = useState(false);
   const meta = TAG_META[pkg.tag];
-  const shown = expanded ? pkg.services : pkg.services.slice(0, 4);
+  const shown = expanded ? pkg.services : pkg.services.slice(0, 5);
+  const coverageOk = pkg.services.length >= 2 && pkg.estimatedCost > 0;
 
   return (
-    <div className={`bg-white rounded-2xl border-2 ${meta.border} ${meta.ring} shadow-md overflow-hidden`}>
+    <div className="bg-white rounded-2xl shadow-lg overflow-hidden border border-gray-100">
 
-      {/* ── Package header ── */}
-      <div className={`${meta.light} px-4 pt-4 pb-3 border-b ${meta.border}`}>
-        <div className="flex items-start justify-between gap-2">
+      {/* ── Colour accent bar ── */}
+      <div className={`h-1 w-full ${meta.accent}`} />
+
+      {/* ── Header ── */}
+      <div className="px-5 pt-4 pb-4">
+        <div className="flex items-start justify-between gap-3">
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
-              <span className="text-xl">{meta.icon}</span>
-              <span className={`text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-full ${meta.badge}`}>
-                {meta.label}
+            <div className="flex items-center gap-2 mb-2 flex-wrap">
+              <span className={`text-[10px] font-extrabold uppercase tracking-widest px-2.5 py-1 rounded-full ${meta.badge}`}>
+                {meta.icon} {meta.label}
               </span>
               <ConfidenceBadge score={pkg.confidenceScore} />
             </div>
             <h2 className="text-lg font-extrabold text-gray-900 leading-tight">{pkg.name}</h2>
+            <p className="text-xs text-gray-400 mt-0.5">{pkg.services.length} service{pkg.services.length !== 1 ? 's' : ''} included</p>
           </div>
           <div className="text-right shrink-0">
-            <p className="text-2xl font-black text-gray-900 leading-none">{fmt(pkg.estimatedCost)}</p>
-            {guestCount && guestCount > 0 && (
-              <p className="text-[11px] text-gray-500 mt-0.5">{fmt(pkg.pricePerGuest)}/guest</p>
+            <p className="text-[10px] text-gray-400 uppercase tracking-wider mb-0.5">Total Est.</p>
+            <p className="text-3xl font-black text-gray-900 leading-none tracking-tight">
+              {pkg.estimatedCost > 0 ? fmt(pkg.estimatedCost) : '—'}
+            </p>
+            {guestCount && guestCount > 0 && pkg.pricePerGuest > 0 && (
+              <p className="text-[11px] text-gray-500 mt-1">{fmt(pkg.pricePerGuest)}/guest</p>
             )}
             {pkg.savings > 0 && (
-              <p className="text-xs font-extrabold text-green-600 mt-0.5">Save {fmt(pkg.savings)}</p>
+              <p className="text-xs font-extrabold text-emerald-600 mt-1">
+                Save {fmt(pkg.savings)}
+              </p>
             )}
           </div>
         </div>
       </div>
 
       {/* ── Services list ── */}
-      <div className="px-4 pt-1 pb-2">
-        {shown.map(svc => (
-          <ServiceRow key={`${svc.vendorId}-${svc.category}`} svc={svc} />
-        ))}
-        {pkg.services.length > 4 && (
-          <button
-            onClick={() => setExpanded(!expanded)}
-            className="w-full py-2.5 text-sm font-semibold text-gray-400 hover:text-gray-700 transition-colors flex items-center justify-center gap-1"
-          >
-            {expanded ? '↑ Show less' : `↓ ${pkg.services.length - 4} more services`}
-          </button>
-        )}
-      </div>
+      {coverageOk ? (
+        <div className="border-t border-gray-50 mx-5" />
+      ) : null}
 
-      {/* ── Summary row ── */}
-      <div className="px-4 py-3 bg-gray-50 border-t border-gray-100 flex items-center justify-between">
-        <span className="text-xs text-gray-500">{pkg.services.length} services · Platform fee {fmt(pkg.platformMargin)}</span>
-        <span className="text-sm font-extrabold text-gray-900">{fmtFull(pkg.estimatedCost)}</span>
-      </div>
+      {pkg.services.length > 0 && (
+        <div className="px-5 pb-1">
+          <p className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest pt-3 pb-2">Services Included</p>
+          {shown.map(svc => (
+            <ServiceRow key={`${svc.vendorId}-${svc.category}`} svc={svc} />
+          ))}
+          {pkg.services.length > 5 && (
+            <button
+              onClick={() => setExpanded(!expanded)}
+              className="w-full py-2.5 text-xs font-bold text-red-500 hover:text-red-700 transition-colors flex items-center justify-center gap-1"
+            >
+              {expanded ? '↑ Show less' : `↓ ${pkg.services.length - 5} more services`}
+            </button>
+          )}
+        </div>
+      )}
 
-      {/* ── CTAs — hidden on mobile (sticky bar handles it), shown on desktop ── */}
-      <div className="hidden sm:flex px-4 py-3 gap-2">
+      {/* ── Totals row ── */}
+      {pkg.estimatedCost > 0 && (
+        <div className="mx-5 my-3 bg-gray-50 rounded-xl px-4 py-3 flex items-center justify-between">
+          <span className="text-xs text-gray-500">
+            {pkg.services.length} services incl. platform fee
+          </span>
+          <span className="text-sm font-extrabold text-gray-900">{fmtFull(pkg.estimatedCost)}</span>
+        </div>
+      )}
+
+      {/* ── CTAs ── */}
+      <div className="px-5 pb-5 flex flex-col sm:flex-row gap-2 mt-1">
         <button
           onClick={onBook}
-          className={`flex-1 py-3.5 rounded-xl font-extrabold text-white text-sm shadow-md transition-all active:scale-[0.98] ${meta.btnCls}`}
+          className={`flex-1 py-3.5 rounded-xl font-extrabold text-white text-sm shadow-lg transition-all active:scale-[0.98] hover:opacity-90 ${meta.btnCls}`}
         >
-          Book This Plan
+          Book This Plan — Free
         </button>
         <button
           onClick={onCustomize}
-          className="flex-1 py-3.5 rounded-xl font-bold text-gray-700 bg-gray-100 hover:bg-gray-200 text-sm transition-all active:scale-[0.98]"
+          className="sm:flex-none px-5 py-3.5 rounded-xl font-bold text-gray-700 bg-gray-100 hover:bg-gray-200 text-sm transition-all active:scale-[0.98]"
         >
-          Customize Plan
+          Customize
         </button>
         <button
           onClick={onCompare}
-          className="px-4 py-3.5 rounded-xl font-bold text-gray-500 text-sm transition-all border border-gray-200 hover:border-gray-300 hover:text-gray-700"
+          className="sm:flex-none px-5 py-3.5 rounded-xl font-bold text-gray-500 text-sm transition-all border border-gray-200 hover:border-gray-300 hover:text-gray-700"
         >
-          Compare
+          Compare ⚖️
         </button>
       </div>
     </div>
   );
 }
 
-// ─── Alternative Package Card ─────────────────────────────────────────────────
+// ─── Alternative Package Card — cleaner ──────────────────────────────────────
 
 function AltCard({
   pkg,
   guestCount,
   isActive,
   onSelect,
+  recommended,
 }: {
   pkg: EventPackage;
   guestCount?: number;
   isActive: boolean;
+  recommended?: EventPackage;
   onSelect: () => void;
 }) {
   const meta = TAG_META[pkg.tag];
+  const diff = recommended && recommended.estimatedCost > 0 && pkg.estimatedCost > 0
+    ? pkg.estimatedCost - recommended.estimatedCost
+    : 0;
 
   return (
     <div
       onClick={onSelect}
-      className={`bg-white rounded-2xl border-2 overflow-hidden shadow-sm active:scale-[0.98] transition-all cursor-pointer ${isActive ? `${meta.border} ${meta.ring}` : 'border-gray-200'}`}
+      className={`bg-white rounded-2xl overflow-hidden shadow-sm active:scale-[0.98] transition-all cursor-pointer border-2 ${
+        isActive ? `${meta.border} ${meta.ring}` : 'border-gray-150 hover:border-gray-300'
+      }`}
     >
-      <div className={`${isActive ? meta.light : 'bg-gray-50'} px-4 py-3 border-b border-gray-100`}>
-        <div className="flex items-center justify-between mb-1.5">
-          <div className="flex items-center gap-1.5">
-            <span className="text-base">{meta.icon}</span>
-            <span className={`text-[10px] font-extrabold uppercase tracking-wide px-1.5 py-0.5 rounded-full ${meta.badge}`}>
-              {meta.label}
-            </span>
-          </div>
+      {/* Top accent */}
+      <div className={`h-0.5 ${meta.accent}`} />
+
+      <div className="px-4 py-3">
+        {/* Badge row */}
+        <div className="flex items-center justify-between mb-2">
+          <span className={`text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-full ${meta.badge}`}>
+            {meta.icon} {meta.label}
+          </span>
           <ConfidenceBadge score={pkg.confidenceScore} />
         </div>
-        <div className="flex items-end justify-between">
-          <p className="text-xl font-black text-gray-900">{fmt(pkg.estimatedCost)}</p>
-          {pkg.savings > 0 && (
-            <p className="text-xs font-bold text-green-600">Save {fmt(pkg.savings)}</p>
+
+        {/* Price */}
+        <p className="text-xl font-black text-gray-900">
+          {pkg.estimatedCost > 0 ? fmt(pkg.estimatedCost) : '—'}
+        </p>
+
+        {/* Price vs recommended */}
+        {diff !== 0 && (
+          <p className={`text-[11px] font-bold mt-0.5 ${diff < 0 ? 'text-emerald-600' : 'text-orange-500'}`}>
+            {diff < 0 ? `Save ${fmt(Math.abs(diff))}` : `+${fmt(diff)} vs standard`}
+          </p>
+        )}
+
+        {guestCount && guestCount > 0 && pkg.pricePerGuest > 0 && (
+          <p className="text-[10px] text-gray-400 mt-0.5">{fmt(pkg.pricePerGuest)}/guest</p>
+        )}
+
+        {/* Services preview */}
+        <div className="mt-2 space-y-0.5">
+          {pkg.services.slice(0, 3).map(svc => (
+            <div key={`${svc.vendorId}-${svc.category}`} className="flex items-center justify-between text-[11px]">
+              <span className="text-gray-500 truncate">{catIcon(svc.category)} {svc.vendorName}</span>
+              <span className="font-semibold text-gray-700 shrink-0 ml-1">
+                {svc.price > 0 ? fmt(svc.price) : '—'}
+              </span>
+            </div>
+          ))}
+          {pkg.services.length > 3 && (
+            <p className="text-[10px] text-gray-400">+{pkg.services.length - 3} more</p>
           )}
         </div>
-        {guestCount && guestCount > 0 && (
-          <p className="text-[11px] text-gray-400 mt-0.5">{fmt(pkg.pricePerGuest)}/guest</p>
-        )}
       </div>
-      <div className="px-4 py-2">
-        {pkg.services.slice(0, 3).map(svc => (
-          <ServiceRow key={`${svc.vendorId}-${svc.category}`} svc={svc} compact />
-        ))}
-        {pkg.services.length > 3 && (
-          <p className="text-[11px] text-gray-400 pt-1">+{pkg.services.length - 3} more services</p>
-        )}
-      </div>
+
       <div className="px-4 pb-3">
-        <button className={`w-full py-2.5 rounded-xl font-bold text-sm text-white transition-all ${meta.btnCls}`}>
-          {isActive ? 'Selected ✓' : 'Select This Plan'}
+        <button className={`w-full py-2.5 rounded-xl font-bold text-sm transition-all ${
+          isActive
+            ? `text-white ${meta.btnCls}`
+            : 'text-gray-700 bg-gray-100 hover:bg-gray-200'
+        }`}>
+          {isActive ? '✓ Selected' : 'Select Plan'}
         </button>
       </div>
     </div>
@@ -656,6 +709,118 @@ function TopPackCard({ pkg }: { pkg: EventPlanV2['topPackages'][number] }) {
   );
 }
 
+// ─── Low Coverage Fallback — shown when city has <2 matching vendors ─────────
+
+function LowCoverageFallback({
+  cityName,
+  eventType,
+  budget,
+  plan,
+  onCustomize,
+}: {
+  cityName: string;
+  eventType: string;
+  budget: number;
+  plan: EventPlanV2 | null;
+  onCustomize: () => void;
+}) {
+  const trending = plan?.trendingPackages ?? [];
+  const top = plan?.topPackages ?? [];
+  const hasFallback = trending.length > 0 || top.length > 0;
+
+  return (
+    <div className="space-y-5">
+      {/* Notice card */}
+      <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5">
+        <div className="flex gap-3">
+          <span className="text-2xl shrink-0">🌱</span>
+          <div>
+            <h3 className="font-extrabold text-amber-900 text-sm mb-1">
+              Limited vendors in {cityName || 'this city'}
+            </h3>
+            <p className="text-xs text-amber-700 leading-relaxed">
+              We're onboarding more vendors here. Meanwhile, here are our best-rated packages from nearby cities — all available to book.
+            </p>
+            <button
+              onClick={onCustomize}
+              className="mt-3 inline-flex items-center gap-1.5 text-xs font-bold text-amber-800 border border-amber-300 bg-white px-3 py-1.5 rounded-full hover:bg-amber-100 transition"
+            >
+              Try a different city →
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Top packages from any city */}
+      {top.filter(p => p.estimatedCost > 0).length > 0 && (
+        <div>
+          <p className="text-xs font-extrabold text-gray-400 uppercase tracking-widest mb-3">Recommended Packages</p>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {top.filter(p => p.estimatedCost > 0).map((pkg, i) => {
+              const meta = TAG_META[pkg.tag];
+              return (
+                <div key={i} className={`bg-white rounded-xl border-2 ${meta.border} p-4 shadow-sm`}>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full ${meta.badge} uppercase`}>
+                      {meta.icon} {meta.label}
+                    </span>
+                  </div>
+                  <p className="font-extrabold text-gray-900 text-sm mb-1">{pkg.name}</p>
+                  <p className="text-[10px] text-gray-400 mb-3">{pkg.highlight}</p>
+                  <div className="flex items-end justify-between">
+                    <p className="text-lg font-black text-gray-900">{fmt(pkg.estimatedCost)}</p>
+                    {pkg.pricePerGuest > 0 && (
+                      <p className="text-[10px] text-gray-400">{fmt(pkg.pricePerGuest)}/guest</p>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Trending packages */}
+      {trending.filter(p => p.estimatedCost > 0).length > 0 && (
+        <div>
+          <p className="text-xs font-extrabold text-gray-400 uppercase tracking-widest mb-3">🔥 Trending Near You</p>
+          <div className="flex gap-3 overflow-x-auto scrollbar-hide snap-x pb-1 sm:grid sm:grid-cols-2 sm:overflow-visible">
+            {trending.filter(p => p.estimatedCost > 0).map((pkg, i) => (
+              <div key={i} className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 flex flex-col gap-2 min-w-[240px] snap-start sm:min-w-0">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 uppercase">
+                    🔥 Trending
+                  </span>
+                  <span className="text-[10px] text-gray-400 font-semibold">{pkg.popularityScore}% booked</span>
+                </div>
+                <h4 className="font-extrabold text-gray-900 text-sm">{pkg.name}</h4>
+                <div className="flex flex-wrap gap-1">
+                  {pkg.servicesSummary.map(s => (
+                    <span key={s} className="text-[10px] bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">{s}</span>
+                  ))}
+                </div>
+                <p className="text-base font-black text-gray-900 mt-auto">{fmt(pkg.estimatedCost)}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* CTA to search */}
+      {!hasFallback && (
+        <div className="text-center py-8">
+          <Link
+            href="/search"
+            className="inline-flex items-center gap-2 bg-red-600 text-white font-bold px-6 py-3 rounded-xl hover:bg-red-700 transition shadow-md"
+          >
+            Browse All Packages →
+          </Link>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Main Plan Content ────────────────────────────────────────────────────────
 
 function PlanContent() {
@@ -735,6 +900,7 @@ function PlanContent() {
 
   const handleBook = () => {
     if (!activePkg?.services[0]) return;
+    Analytics.bookClick(activePkg.tag, activePkg.estimatedCost);
     const svc = activePkg.services[0];
     setLeadVendor({
       id: svc.vendorId, businessName: svc.vendorName, slug: svc.vendorSlug,
@@ -747,10 +913,29 @@ function PlanContent() {
   const theme = EVENT_THEMES[params.eventType] ?? EVENT_THEMES.default;
   const cityName = cities.find(c => String(c.id) === params.cityId)?.name || '';
   const guestCount = params.guestCount ? Number(params.guestCount) : undefined;
-  const alternatives = plan?.alternatives ?? [];
-  const allPackages = plan?.recommended
+  const alternatives = (plan?.alternatives ?? []).filter(a => a.estimatedCost > 0);
+  const allPackages = plan?.recommended && plan.recommended.estimatedCost > 0
     ? [plan.recommended, ...alternatives].filter(Boolean) as EventPackage[]
     : [];
+
+  // Low coverage: recommended package has < 2 services OR cost is 0
+  const MIN_SERVICES = 2;
+  const hasGoodCoverage = !plan || (
+    plan.recommended.services.length >= MIN_SERVICES &&
+    plan.recommended.estimatedCost > 0
+  );
+
+  // Track plan view once loaded
+  useEffect(() => {
+    if (plan && !loading) {
+      Analytics.planView({
+        eventType: params.eventType,
+        budget: Number(params.budget),
+        cityId: Number(params.cityId),
+      });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [plan, loading]);
 
   // ── Entry / no-param state ───────────────────────────────────────────────────
   if (!loading && !plan && searchParams.get('autosubmit') !== '1') {
@@ -847,88 +1032,84 @@ function PlanContent() {
           </div>
         )}
 
-        {plan && activePkg && !loading && (
+        {plan && !loading && (
           <>
-            {/* ── 1. Primary package (selected) ── */}
-            <PrimaryPackageCard
-              pkg={activePkg}
-              guestCount={guestCount}
-              onBook={handleBook}
-              onCustomize={() => setSheetCustomize(true)}
-              onCompare={() => setSheetCompare(true)}
-            />
-
-            {/* ── 2. More Options — alt packages ── */}
-            {alternatives.length > 0 && (
-              <div>
-                <p className="text-xs font-extrabold text-gray-400 uppercase tracking-widest mb-2">More Options</p>
-                <div className="grid grid-cols-2 gap-3">
-                  {alternatives.map(alt => (
-                    <AltCard
-                      key={alt.tag}
-                      pkg={alt}
-                      guestCount={guestCount}
-                      isActive={activePkg.tag === alt.tag}
-                      onSelect={() => { setActivePkg(alt); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
-                    />
-                  ))}
-                </div>
-              </div>
+            {/* ── Low coverage fallback ── */}
+            {!hasGoodCoverage && (
+              <LowCoverageFallback
+                cityName={cityName}
+                eventType={params.eventType}
+                budget={Number(params.budget)}
+                plan={plan}
+                onCustomize={() => setSheetCustomize(true)}
+              />
             )}
 
-            {/* ── 3. Budget Breakdown ── */}
-            <BudgetBreakdown breakdown={plan.breakdown ?? {}} totalBudget={plan.meta?.totalBudget ?? Number(params.budget)} />
+            {/* ── Full plan with good vendor coverage ── */}
+            {hasGoodCoverage && activePkg && (
+              <>
+                {/* ── 1. Primary package (selected) ── */}
+                <PrimaryPackageCard
+                  pkg={activePkg}
+                  guestCount={guestCount}
+                  onBook={handleBook}
+                  onCustomize={() => { Analytics.customizeClick(); setSheetCustomize(true); }}
+                  onCompare={() => { Analytics.compareClick(); setSheetCompare(true); }}
+                />
 
-            {/* ── 4. Top Packages (spec Step 6) ── */}
-            {(plan.topPackages?.length ?? 0) > 0 && (
-              <div>
-                <p className="text-xs font-extrabold text-gray-400 uppercase tracking-widest mb-2">Quick Picks</p>
-                <div className="flex gap-3 overflow-x-auto scrollbar-hide snap-x -mx-1 px-1 pb-1 sm:grid sm:grid-cols-3 sm:overflow-visible sm:mx-0 sm:px-0">
-                  {plan.topPackages.map((tp, i) => (
-                    <div key={i} className="snap-start shrink-0 w-52 sm:w-auto">
-                      <TopPackCard pkg={tp} />
+                {/* ── 2. Compare tiers — alt packages ── */}
+                {alternatives.length > 0 && (
+                  <div>
+                    <p className="text-xs font-extrabold text-gray-400 uppercase tracking-widest mb-3">Compare Plans</p>
+                    <div className="grid grid-cols-2 gap-3">
+                      {allPackages.filter(p => p.tag !== activePkg.tag).map(alt => (
+                        <AltCard
+                          key={alt.tag}
+                          pkg={alt}
+                          guestCount={guestCount}
+                          isActive={activePkg.tag === alt.tag}
+                          recommended={plan.recommended}
+                          onSelect={() => {
+                            Analytics.packageSelect(alt.tag, alt.estimatedCost);
+                            setActivePkg(alt);
+                            window.scrollTo({ top: 0, behavior: 'smooth' });
+                          }}
+                        />
+                      ))}
                     </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* ── 5. Trending Packages (spec Step 5) ── */}
-            {(plan.trendingPackages?.length ?? 0) > 0 && (
-              <div>
-                <p className="text-xs font-extrabold text-gray-400 uppercase tracking-widest mb-2">Trending Now</p>
-                <div className="flex gap-3 overflow-x-auto scrollbar-hide snap-x -mx-1 px-1 pb-1 sm:grid sm:grid-cols-2 sm:overflow-visible sm:mx-0 sm:px-0">
-                  {plan.trendingPackages.map((tp, i) => (
-                    <div key={i} className="snap-start shrink-0 sm:w-auto">
-                      <TrendingCard pkg={tp} />
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* ── 6. Trust strip ── */}
-            <div className="bg-white rounded-xl border border-gray-100 px-4 py-3">
-              <div className="grid grid-cols-2 gap-2">
-                {[
-                  '✓ 2,000+ verified vendors',
-                  '✓ 4.8★ avg rating',
-                  '✓ 50K+ happy families',
-                  '✓ Free quotes, always',
-                ].map(t => (
-                  <div key={t} className="flex items-center gap-1.5">
-                    <span className="text-green-600 font-black text-xs shrink-0">{t.slice(0, 1)}</span>
-                    <span className="text-xs text-gray-500">{t.slice(2)}</span>
                   </div>
-                ))}
-              </div>
-            </div>
+                )}
 
-            {/* Meta */}
-            {plan.meta?.generatedAt && (
-              <p className="text-center text-[10px] text-gray-300">
-                Plan generated {new Date(plan.meta.generatedAt).toLocaleTimeString()} · Powered by Plantoday AI
-              </p>
+                {/* ── 3. Budget Breakdown ── */}
+                <BudgetBreakdown
+                  breakdown={plan.breakdown ?? {}}
+                  totalBudget={plan.meta?.totalBudget ?? Number(params.budget)}
+                />
+
+                {/* ── 4. Trust strip ── */}
+                <div className="bg-white rounded-xl border border-gray-100 px-4 py-3">
+                  <div className="grid grid-cols-2 gap-2">
+                    {[
+                      '✓ 2,000+ verified vendors',
+                      '✓ 4.8★ avg rating',
+                      '✓ 50K+ happy families',
+                      '✓ Free quotes, always',
+                    ].map(t => (
+                      <div key={t} className="flex items-center gap-1.5">
+                        <span className="text-green-600 font-black text-xs">{t.slice(0, 1)}</span>
+                        <span className="text-xs text-gray-500">{t.slice(2)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Meta */}
+                {plan.meta?.generatedAt && (
+                  <p className="text-center text-[10px] text-gray-300">
+                    AI plan · {new Date(plan.meta.generatedAt).toLocaleTimeString()} · Powered by Plantoday
+                  </p>
+                )}
+              </>
             )}
           </>
         )}

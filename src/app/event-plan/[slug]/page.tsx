@@ -185,6 +185,8 @@ export default async function EventPlanSeoPage({
     // Render page without vendor data — still useful for SEO + CTA
   }
 
+  const safePlan = Array.isArray(plan?.plan) ? plan.plan : [];
+
   const budgetStr = formatBudget(budget);
 
   // Related cities (all fetched cities excluding current one)
@@ -248,11 +250,11 @@ export default async function EventPlanSeoPage({
         <div className="max-w-4xl mx-auto px-4 py-10 space-y-6">
 
           {/* Budget breakdown */}
-          {plan && plan.plan.filter(p => p.category !== 'misc').length > 0 && (
+          {plan && safePlan.filter(p => p.category !== 'misc').length > 0 && (
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
               <h2 className="font-extrabold text-gray-900 text-lg mb-4">Budget Breakdown</h2>
               <div className="space-y-3.5">
-                {plan.plan.filter(p => p.category !== 'misc').map(item => {
+                {safePlan.filter(p => p.category !== 'misc').map(item => {
                   const cat  = catMap.get(item.category);
                   const name = cat?.name || item.category.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
                   const icon = cat?.icon || '✨';
@@ -278,7 +280,7 @@ export default async function EventPlanSeoPage({
           )}
 
           {/* Vendors by category */}
-          {plan?.plan.filter(item => item.category !== 'misc' && item.vendors.length > 0).map(item => {
+          {safePlan.filter(item => item.category !== 'misc' && item.vendors.length > 0).map(item => {
             const cat  = catMap.get(item.category);
             const name = cat?.name || item.category.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
             const icon = cat?.icon || '✨';

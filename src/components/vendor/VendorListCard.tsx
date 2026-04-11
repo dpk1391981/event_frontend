@@ -40,9 +40,10 @@ interface Props {
   vendor: Vendor;
   rank?: number;
   onGetQuote?: (vendor: Vendor) => void;
+  contacted?: boolean;
 }
 
-export default function VendorListCard({ vendor, rank, onGetQuote }: Props) {
+export default function VendorListCard({ vendor, rank, onGetQuote, contacted = false }: Props) {
   const r = Number(vendor.rating) || 0;
   const minP = Number(vendor.minPrice) || 0;
   const maxP = Number(vendor.maxPrice) || 0;
@@ -117,6 +118,11 @@ export default function VendorListCard({ vendor, rank, onGetQuote }: Props) {
                 {planBadge && (
                   <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full border ${planBadge.color}`}>
                     {planBadge.label}
+                  </span>
+                )}
+                {contacted && (
+                  <span className="inline-flex items-center gap-1 text-[9px] font-extrabold bg-green-100 text-green-700 px-2 py-0.5 rounded-full">
+                    ✓ Connected
                   </span>
                 )}
               </div>

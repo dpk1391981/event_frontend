@@ -118,6 +118,7 @@ export const categoriesApi = {
 export const leadsApi = {
   create: (data: unknown) => api.post('/leads', data),
   route: (data: unknown) => api.post('/leads/route', data),
+  planBooking: (data: unknown) => api.post('/leads/plan-booking', data),
   getVendorLeads: (vendorId: number, page = 1, limit = 20, status?: string) =>
     api.get(`/leads/vendor/${vendorId}`, { params: { page, limit, status } }),
   getStats: (vendorId: number) => api.get(`/leads/vendor/${vendorId}/stats`),

@@ -7,6 +7,7 @@ interface Props {
   onBook?: (pkg: VendorPackage) => void;
   compact?: boolean;
   listView?: boolean; // desktop horizontal list card
+  contacted?: boolean; // user has previously contacted this vendor
 }
 
 const TAG_STYLE: Record<string, string> = {
@@ -29,7 +30,7 @@ function fmt(n: number) {
   return `₹${n}`;
 }
 
-export default function PackageCard({ pkg, onBook, compact = false, listView = false }: Props) {
+export default function PackageCard({ pkg, onBook, compact = false, listView = false, contacted = false }: Props) {
   const savings = Math.round(Number(pkg.savingsPercent ?? 0));
   const tagStyle = pkg.tag ? TAG_STYLE[pkg.tag] : null;
   const tagBorder = pkg.tag ? TAG_BORDER[pkg.tag] : 'border-l-red-400';
@@ -63,7 +64,14 @@ export default function PackageCard({ pkg, onBook, compact = false, listView = f
                 <span className="rounded-full bg-red-600 px-2 py-0.5 text-[9px] font-bold text-white">⭐ FEATURED</span>
               )}
             </div>
-            <h3 className="font-extrabold text-gray-900 text-sm leading-snug">{pkg.title}</h3>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h3 className="font-extrabold text-gray-900 text-sm leading-snug">{pkg.title}</h3>
+              {contacted && (
+                <span className="inline-flex items-center gap-1 text-[9px] font-extrabold bg-green-100 text-green-700 px-2 py-0.5 rounded-full shrink-0">
+                  ✓ Connected
+                </span>
+              )}
+            </div>
             {pkg.vendor?.businessName && (
               <p className="text-xs text-gray-500 mt-0.5">{pkg.vendor.businessName}
                 {pkg.city?.name && <span className="text-gray-400"> · {pkg.city.name}</span>}
@@ -160,9 +168,16 @@ export default function PackageCard({ pkg, onBook, compact = false, listView = f
                 </span>
               )}
             </div>
-            <h3 className="font-extrabold text-gray-900 text-sm leading-snug line-clamp-2">
-              {pkg.title}
-            </h3>
+            <div className="flex items-start gap-2 flex-wrap">
+              <h3 className="font-extrabold text-gray-900 text-sm leading-snug line-clamp-2">
+                {pkg.title}
+              </h3>
+              {contacted && (
+                <span className="inline-flex items-center gap-1 text-[9px] font-extrabold bg-green-100 text-green-700 px-2 py-0.5 rounded-full shrink-0 mt-0.5">
+                  ✓ Connected
+                </span>
+              )}
+            </div>
             {pkg.vendor?.businessName && (
               <p className="text-xs text-gray-500 mt-0.5 truncate">{pkg.vendor.businessName}</p>
             )}

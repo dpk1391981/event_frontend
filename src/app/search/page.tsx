@@ -3,6 +3,7 @@
 import { Suspense, useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { searchApi, locationsApi, categoriesApi, packagesApi } from '@/lib/api';
+import { getBookings } from '@/lib/bookings';
 import { useAppStore } from '@/store/useAppStore';
 import { Vendor, City, Category, Locality, SearchResult, VendorPackage } from '@/types';
 import VendorListCard from '@/components/vendor/VendorListCard';
@@ -41,12 +42,13 @@ function isGenericPackageQuery(q: string) {
 /* ─── Featured packages auto-scroll carousel ────────────────────────────────── */
 
 function PackageCarousel({
-  title, badge, packages, onBook,
+  title, badge, packages, onBook, contactedVendorIds,
 }: {
   title: string;
   badge?: string;
   packages: VendorPackage[];
   onBook: (pkg: VendorPackage) => void;
+  contactedVendorIds?: Set<number>;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [canLeft, setCanLeft]   = useState(false);
@@ -138,7 +140,7 @@ function PackageCarousel({
         >
           {packages.map((pkg) => (
             <div key={pkg.id} className="flex-none w-[250px] snap-start">
-              <PackageCard pkg={pkg} onBook={onBook} compact />
+              <PackageCard pkg={pkg} onBook={onBook} compact contacted={contactedVendorIds?.has(pkg.vendorId)} />
             </div>
           ))}
         </div>
@@ -208,6 +210,7 @@ type Filters = {
   maxBudget: string;
   minBudget: string;
   tag: string;
+  priceType: string;  // '' | 'fixed' | 'per_person'
   minRating: string;
   sortBy: string;
   page: number;
@@ -216,16 +219,19 @@ type Filters = {
 };
 
 function FilterPanel({
-  filters, cities, categories, localities, activeFilterCount, updateFilter, resetFilters,
+  filters, cities, categories, localities, activeFilterCount, activeTab, updateFilter, resetFilters,
 }: {
   filters: Filters;
   cities: City[];
   categories: Category[];
   localities: Locality[];
   activeFilterCount: number;
+  activeTab: 'packages' | 'vendors';
   updateFilter: (k: string, v: unknown) => void;
   resetFilters: () => void;
 }) {
+  const isPackages = activeTab === 'packages';
+
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between">
@@ -278,42 +284,80 @@ function FilterPanel({
         </select>
       </div>
 
-      {/* Package tier */}
-      <div>
-        <label className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest mb-2 block">Package Tier</label>
-        <div className="grid grid-cols-2 gap-1.5">
-          {[
-            { val: '', label: 'All' },
-            { val: 'budget',   label: '💚 Budget'   },
-            { val: 'standard', label: '💙 Standard' },
-            { val: 'premium',  label: '💜 Premium'  },
-            { val: 'luxury',   label: '🏅 Luxury'   },
-          ].map((t) => (
-            <button
-              key={t.val}
-              onClick={() => updateFilter('tag', t.val)}
-              className={`text-[11px] font-semibold px-2 py-1.5 rounded-lg border transition ${
-                filters.tag === t.val
-                  ? 'bg-red-600 text-white border-red-600'
-                  : 'border-gray-200 text-gray-600 hover:border-red-200'
-              }`}
-            >
-              {t.label}
-            </button>
-          ))}
+      {/* Package-only: Tier */}
+      {isPackages && (
+        <div>
+          <label className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest mb-2 block">Package Tier</label>
+          <div className="grid grid-cols-2 gap-1.5">
+            {[
+              { val: '', label: 'All' },
+              { val: 'budget',   label: '💚 Budget'   },
+              { val: 'standard', label: '💙 Standard' },
+              { val: 'premium',  label: '💜 Premium'  },
+              { val: 'luxury',   label: '🏅 Luxury'   },
+            ].map((t) => (
+              <button
+                key={t.val}
+                onClick={() => updateFilter('tag', t.val)}
+                className={`text-[11px] font-semibold px-2 py-1.5 rounded-lg border transition ${
+                  filters.tag === t.val
+                    ? 'bg-red-600 text-white border-red-600'
+                    : 'border-gray-200 text-gray-600 hover:border-red-200'
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
+
+      {/* Package-only: Price type */}
+      {isPackages && (
+        <div>
+          <label className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest mb-2 block">Pricing Type</label>
+          <div className="flex gap-1.5">
+            {[
+              { val: '',           label: 'All'         },
+              { val: 'fixed',      label: '💰 Full Price' },
+              { val: 'per_person', label: '🍽️ Per Plate' },
+            ].map((t) => (
+              <button
+                key={t.val}
+                onClick={() => updateFilter('priceType', t.val)}
+                className={`flex-1 text-[11px] font-semibold px-2 py-1.5 rounded-lg border transition ${
+                  filters.priceType === t.val
+                    ? 'bg-red-600 text-white border-red-600'
+                    : 'border-gray-200 text-gray-600 hover:border-red-200'
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Budget range */}
       <div>
-        <label className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest mb-2 block">Max Budget (₹)</label>
-        <input
-          type="number" placeholder="e.g. 50000"
-          value={filters.maxBudget}
-          onChange={(e) => updateFilter('maxBudget', e.target.value)}
-          className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-red-100 focus:border-red-400"
-        />
-        <div className="flex flex-wrap gap-1.5 mt-2">
+        <label className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest mb-2 block">
+          {isPackages ? 'Price Range (₹)' : 'Budget Range (₹)'}
+        </label>
+        <div className="flex gap-2 mb-2">
+          <input
+            type="number" placeholder="Min"
+            value={filters.minBudget}
+            onChange={(e) => updateFilter('minBudget', e.target.value)}
+            className="w-1/2 border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-red-100 focus:border-red-400"
+          />
+          <input
+            type="number" placeholder="Max"
+            value={filters.maxBudget}
+            onChange={(e) => updateFilter('maxBudget', e.target.value)}
+            className="w-1/2 border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-red-100 focus:border-red-400"
+          />
+        </div>
+        <div className="flex flex-wrap gap-1.5">
           {['25000', '50000', '100000', '200000', '500000'].map((v) => (
             <button
               key={v}
@@ -322,7 +366,27 @@ function FilterPanel({
                 filters.maxBudget === v ? 'bg-red-100 text-red-700 border-red-300' : 'border-gray-200 text-gray-500 hover:border-red-200'
               }`}
             >
-              ₹{Number(v) >= 100000 ? `${Number(v) / 100000}L` : `${Number(v) / 1000}K`}
+              ≤ ₹{Number(v) >= 100000 ? `${Number(v) / 100000}L` : `${Number(v) / 1000}K`}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Min Rating */}
+      <div>
+        <label className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest mb-2 block">Min Rating</label>
+        <div className="flex gap-1.5">
+          {['', '3', '3.5', '4', '4.5'].map((v) => (
+            <button
+              key={v}
+              onClick={() => updateFilter('minRating', v)}
+              className={`flex-1 text-[11px] font-semibold py-1.5 rounded-lg border transition ${
+                filters.minRating === v
+                  ? 'bg-red-600 text-white border-red-600'
+                  : 'border-gray-200 text-gray-600 hover:border-red-200'
+              }`}
+            >
+              {v === '' ? 'All' : `${v}★`}
             </button>
           ))}
         </div>
@@ -340,7 +404,8 @@ function FilterPanel({
           <option value="popular">Most Popular</option>
           <option value="price_low">Price: Low to High</option>
           <option value="price_high">Price: High to Low</option>
-          <option value="savings">Best Savings %</option>
+          {isPackages && <option value="savings">Best Savings %</option>}
+          {!isPackages && <option value="rating">Highest Rated</option>}
         </select>
       </div>
 
@@ -409,6 +474,12 @@ function SearchPageInner() {
   const [selectedVendor, setSelectedVendor]   = useState<Vendor | null>(null);
   const [selectedPackage, setSelectedPackage] = useState<VendorPackage | null>(null);
   const [filtersOpen, setFiltersOpen]         = useState(false);
+  const [contactedVendorIds, setContactedVendorIds] = useState<Set<number>>(new Set());
+
+  // Load previously-contacted vendors from localStorage
+  useEffect(() => {
+    setContactedVendorIds(new Set(getBookings().map((b) => b.vendorId)));
+  }, []);
 
   // Package state
   const [allPackages, setAllPackages]         = useState<VendorPackage[]>([]);
@@ -417,6 +488,7 @@ function SearchPageInner() {
   const [pkgLoading, setPkgLoading]           = useState(true);
   const [pkgPage, setPkgPage]                 = useState(1);
   const [pkgTotal, setPkgTotal]               = useState(0);
+  const [pkgTab, setPkgTab]                   = useState<'featured' | 'trending' | 'all'>('featured');
   const PKG_LIMIT = 12;
 
   const storeCity     = useAppStore((s) => s.selectedCity);
@@ -429,6 +501,7 @@ function SearchPageInner() {
     maxBudget:  searchParams.get('maxBudget') || '',
     minBudget:  '',
     tag:        '',
+    priceType:  '',
     minRating:  '',
     sortBy:     'relevance',
     page:       1,
@@ -467,46 +540,42 @@ function SearchPageInner() {
       } else {
         data = await searchApi.search({
           q: (!isPackagesMode && query) ? query : undefined,
-          cityId: filters.cityId || undefined,
+          cityId:     filters.cityId     || undefined,
+          localityId: filters.localityId || undefined,
           categoryId: filters.categoryId || undefined,
-          maxBudget: filters.maxBudget || undefined,
-          rating: filters.minRating || undefined,
-          sortBy: filters.sortBy,
-          page: filters.page,
-          eventDate: filters.eventDate || undefined,
-          eventTime: filters.eventTime || undefined,
+          minBudget:  filters.minBudget  || undefined,
+          maxBudget:  filters.maxBudget  || undefined,
+          rating:     filters.minRating  || undefined,
+          sortBy:     filters.sortBy     || undefined,
+          page:       filters.page,
+          eventDate:  filters.eventDate  || undefined,
+          eventTime:  filters.eventTime  || undefined,
         }) as unknown as SearchResult;
       }
       setResult(data);
     } catch { setResult(null); } finally { setLoading(false); }
   }, [query, isNlp, isPackagesMode, filters]);
 
-  // Package search — never pass generic queries, only real content filters
+  // Package search
   const doPackageSearch = useCallback(async () => {
     setPkgLoading(true);
     try {
       const contentQuery = isNlp || isPackagesMode ? undefined : (query || undefined);
 
-      // Sort mapping
-      const sortToParams: Record<string, Record<string, unknown>> = {
-        popular:    { sortBy: 'leads' },
-        price_low:  { minBudget: filters.minBudget || undefined, maxBudget: filters.maxBudget || undefined },
-        price_high: { maxBudget: filters.maxBudget || undefined },
-        savings:    { sortBy: 'savings' },
-      };
-
       const res = await packagesApi.search({
-        q: contentQuery,
+        q:          contentQuery,
         cityId:     filters.cityId     || undefined,
         localityId: filters.localityId || undefined,
         categoryId: filters.categoryId || undefined,
-        maxBudget:  filters.maxBudget  || undefined,
         minBudget:  filters.minBudget  || undefined,
+        maxBudget:  filters.maxBudget  || undefined,
         tag:        filters.tag        || undefined,
+        priceType:  filters.priceType  || undefined,
+        minRating:  filters.minRating  || undefined,
         eventDate:  filters.eventDate  || undefined,
+        sortBy:     filters.sortBy     || undefined,
         page:       pkgPage,
         limit:      PKG_LIMIT,
-        ...(sortToParams[filters.sortBy] ?? {}),
       }) as unknown as { data: VendorPackage[]; meta: { total: number; page: number; limit: number } };
 
       const packages = res.data ?? [];
@@ -538,14 +607,16 @@ function SearchPageInner() {
 
   const resetFilters = () => setFilters((f) => ({
     ...f, categoryId: 0, localityId: 0, maxBudget: '', minBudget: '',
-    tag: '', minRating: '', sortBy: 'relevance', page: 1, eventDate: '', eventTime: '',
+    tag: '', priceType: '', minRating: '', sortBy: 'relevance', page: 1, eventDate: '', eventTime: '',
   }));
 
   const activeFilterCount = [
     filters.categoryId !== 0,
     filters.localityId !== 0,
+    filters.minBudget !== '',
     filters.maxBudget !== '',
     filters.tag !== '',
+    filters.priceType !== '',
     filters.minRating !== '',
     filters.sortBy !== 'relevance',
     filters.eventDate !== '',
@@ -562,13 +633,6 @@ function SearchPageInner() {
     setSelectedPackage(pkg);
     setSelectedVendor(pkg.vendor as any);
   };
-
-  // Deduplicate main grid — exclude packages already shown in carousels
-  const showcaseIds = new Set([
-    ...featuredPkgs.map((p) => p.id),
-    ...popularPkgs.map((p) => p.id),
-  ]);
-  const gridPackages = allPackages.filter((p) => !showcaseIds.has(p.id));
 
   /* Quick-sort chips for packages tab */
   const SORT_CHIPS = [
@@ -652,7 +716,7 @@ function SearchPageInner() {
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 sticky top-20">
               <FilterPanel
                 filters={filters} cities={cities} categories={categories} localities={localities}
-                activeFilterCount={activeFilterCount}
+                activeFilterCount={activeFilterCount} activeTab={activeTab}
                 updateFilter={updateFilter} resetFilters={resetFilters}
               />
             </div>
@@ -718,7 +782,7 @@ function SearchPageInner() {
               <div className="lg:hidden bg-white rounded-2xl border border-gray-100 p-5 mb-4 shadow-sm">
                 <FilterPanel
                   filters={filters} cities={cities} categories={categories} localities={localities}
-                  activeFilterCount={activeFilterCount}
+                  activeFilterCount={activeFilterCount} activeTab={activeTab}
                   updateFilter={updateFilter} resetFilters={resetFilters}
                 />
               </div>
@@ -727,112 +791,153 @@ function SearchPageInner() {
             {/* ═══ PACKAGES TAB ═══ */}
             {activeTab === 'packages' && (
               <div>
-                {/* Sort chips */}
-                <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1 mb-5">
-                  {SORT_CHIPS.map((chip) => (
+                {/* Sub-tabs: Featured / Trending / All Packages */}
+                <div className="flex gap-1 bg-white border border-gray-200 rounded-xl p-1 mb-5 overflow-x-auto scrollbar-hide w-fit">
+                  {([
+                    { key: 'featured' as const, icon: '⭐', label: 'Featured',     count: featuredPkgs.length },
+                    { key: 'trending' as const, icon: '🔥', label: 'Trending',     count: popularPkgs.length },
+                    { key: 'all'      as const, icon: '◻',  label: 'All Packages', count: pkgTotal },
+                  ]).map((tab) => (
                     <button
-                      key={chip.val}
-                      onClick={() => updateFilter('sortBy', chip.val)}
-                      className={`flex-none text-xs font-bold px-4 py-2 rounded-full border transition ${
-                        filters.sortBy === chip.val
-                          ? 'bg-red-600 text-white border-red-600 shadow-sm'
-                          : 'bg-white border-gray-200 text-gray-600 hover:border-red-300 hover:text-red-600'
+                      key={tab.key}
+                      onClick={() => setPkgTab(tab.key)}
+                      className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold transition-all whitespace-nowrap ${
+                        pkgTab === tab.key ? 'bg-red-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-800'
                       }`}
                     >
-                      {chip.label}
+                      {tab.icon} {tab.label}
+                      {tab.count > 0 && (
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
+                          pkgTab === tab.key ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-500'
+                        }`}>
+                          {tab.count}
+                        </span>
+                      )}
                     </button>
                   ))}
                 </div>
 
-                {/* Featured packages carousel */}
-                {featuredPkgs.length > 0 && (
-                  <PackageCarousel
-                    title={`Top Packages${cityLabel ? ` in ${cityLabel}` : ' — All Cities'}`}
-                    badge="⭐ Featured"
-                    packages={featuredPkgs}
-                    onBook={handleBook}
-                  />
-                )}
-
-                {/* Popular / trending carousel */}
-                {popularPkgs.length > 0 && (
-                  <PackageCarousel
-                    title="Popular Packages"
-                    badge="🔥 Trending"
-                    packages={popularPkgs}
-                    onBook={handleBook}
-                  />
-                )}
-
-                {/* Divider */}
-                {(featuredPkgs.length > 0 || popularPkgs.length > 0) && (
-                  <div className="flex items-center gap-3 mb-6">
-                    <div className="flex-1 border-t border-gray-200" />
-                    <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">All Packages</span>
-                    <div className="flex-1 border-t border-gray-200" />
-                  </div>
-                )}
-
-                {/* Main listing — list on desktop, 2-col grid on mobile */}
-                {pkgLoading ? (
-                  <PackageGridSkeleton />
-                ) : gridPackages.length > 0 ? (
-                  <>
-                    {/* Mobile: 2-column grid */}
-                    <div className="grid grid-cols-2 gap-3 lg:hidden">
-                      {gridPackages.map((pkg) => (
-                        <PackageCard key={pkg.id} pkg={pkg} onBook={handleBook} />
-                      ))}
-                    </div>
-                    {/* Desktop: list view */}
-                    <div className="hidden lg:flex flex-col gap-3">
-                      {gridPackages.map((pkg) => (
-                        <PackageCard key={pkg.id} pkg={pkg} onBook={handleBook} listView />
-                      ))}
-                    </div>
-
-                    {/* Pagination */}
-                    {pkgTotal > PKG_LIMIT && (
-                      <div className="mt-8 flex justify-center gap-2 overflow-x-auto scrollbar-hide pb-1">
-                        <button
-                          onClick={() => { setPkgPage((p) => Math.max(1, p - 1)); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
-                          disabled={pkgPage === 1}
-                          className="w-10 h-10 rounded-full border border-gray-200 text-gray-600 hover:border-red-400 disabled:opacity-40 transition flex items-center justify-center font-bold"
-                        >‹</button>
-                        {[...Array(Math.min(Math.ceil(pkgTotal / PKG_LIMIT), 10))].map((_, i) => (
-                          <button key={i} onClick={() => { setPkgPage(i + 1); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
-                            className={`w-10 h-10 rounded-full text-sm font-bold transition ${pkgPage === i + 1 ? 'bg-red-600 text-white shadow-md' : 'bg-white border border-gray-200 text-gray-600 hover:border-red-400 hover:text-red-600'}`}>
-                            {i + 1}
-                          </button>
-                        ))}
-                        <button
-                          onClick={() => { setPkgPage((p) => Math.min(Math.ceil(pkgTotal / PKG_LIMIT), p + 1)); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
-                          disabled={pkgPage >= Math.ceil(pkgTotal / PKG_LIMIT)}
-                          className="w-10 h-10 rounded-full border border-gray-200 text-gray-600 hover:border-red-400 disabled:opacity-40 transition flex items-center justify-center font-bold"
-                        >›</button>
+                {/* ─ Featured tab ─ */}
+                {pkgTab === 'featured' && (
+                  pkgLoading ? (
+                    <PackageGridSkeleton />
+                  ) : featuredPkgs.length > 0 ? (
+                    <>
+                      <div className="grid grid-cols-2 gap-3 lg:hidden">
+                        {featuredPkgs.map((pkg) => <PackageCard key={pkg.id} pkg={pkg} onBook={handleBook} contacted={contactedVendorIds.has(pkg.vendorId)} />)}
                       </div>
-                    )}
-                  </>
-                ) : (
-                  !pkgLoading && gridPackages.length === 0 && featuredPkgs.length === 0 && popularPkgs.length === 0 && (
-                    <div className="text-center py-20">
-                      <div className="text-6xl mb-4">📦</div>
-                      <h3 className="text-lg font-extrabold text-gray-800 mb-2">No packages found</h3>
-                      <p className="text-gray-500 text-sm mb-5 max-w-sm mx-auto">
-                        Try removing some filters, or browse all cities.
-                      </p>
-                      <div className="flex gap-3 justify-center">
-                        <button onClick={resetFilters}
-                          className="bg-red-600 text-white px-6 py-2.5 rounded-full text-sm font-bold hover:bg-red-700 transition">
-                          Clear Filters
-                        </button>
-                        <button onClick={() => setActiveTab('vendors')}
-                          className="border border-gray-200 text-gray-700 px-6 py-2.5 rounded-full text-sm font-semibold hover:border-red-300 transition">
-                          Browse Vendors
-                        </button>
+                      <div className="hidden lg:flex flex-col gap-3">
+                        {featuredPkgs.map((pkg) => <PackageCard key={pkg.id} pkg={pkg} onBook={handleBook} listView contacted={contactedVendorIds.has(pkg.vendorId)} />)}
                       </div>
+                    </>
+                  ) : (
+                    <div className="text-center py-16">
+                      <div className="text-4xl mb-3">⭐</div>
+                      <p className="text-gray-500 text-sm font-semibold">No featured packages yet</p>
+                      <button onClick={() => setPkgTab('all')} className="mt-3 text-red-600 text-sm font-bold hover:underline">
+                        Browse all packages →
+                      </button>
                     </div>
                   )
+                )}
+
+                {/* ─ Trending tab ─ */}
+                {pkgTab === 'trending' && (
+                  pkgLoading ? (
+                    <PackageGridSkeleton />
+                  ) : popularPkgs.length > 0 ? (
+                    <>
+                      <div className="grid grid-cols-2 gap-3 lg:hidden">
+                        {popularPkgs.map((pkg) => <PackageCard key={pkg.id} pkg={pkg} onBook={handleBook} contacted={contactedVendorIds.has(pkg.vendorId)} />)}
+                      </div>
+                      <div className="hidden lg:flex flex-col gap-3">
+                        {popularPkgs.map((pkg) => <PackageCard key={pkg.id} pkg={pkg} onBook={handleBook} listView contacted={contactedVendorIds.has(pkg.vendorId)} />)}
+                      </div>
+                    </>
+                  ) : (
+                    <div className="text-center py-16">
+                      <div className="text-4xl mb-3">🔥</div>
+                      <p className="text-gray-500 text-sm font-semibold">No trending packages yet</p>
+                      <button onClick={() => setPkgTab('all')} className="mt-3 text-red-600 text-sm font-bold hover:underline">
+                        Browse all packages →
+                      </button>
+                    </div>
+                  )
+                )}
+
+                {/* ─ All packages tab ─ */}
+                {pkgTab === 'all' && (
+                  <div>
+                    {/* Sort chips */}
+                    <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1 mb-5">
+                      {SORT_CHIPS.map((chip) => (
+                        <button
+                          key={chip.val}
+                          onClick={() => updateFilter('sortBy', chip.val)}
+                          className={`flex-none text-xs font-bold px-4 py-2 rounded-full border transition ${
+                            filters.sortBy === chip.val
+                              ? 'bg-red-600 text-white border-red-600 shadow-sm'
+                              : 'bg-white border-gray-200 text-gray-600 hover:border-red-300 hover:text-red-600'
+                          }`}
+                        >
+                          {chip.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    {pkgLoading ? (
+                      <PackageGridSkeleton />
+                    ) : allPackages.length > 0 ? (
+                      <>
+                        <div className="grid grid-cols-2 gap-3 lg:hidden">
+                          {allPackages.map((pkg) => <PackageCard key={pkg.id} pkg={pkg} onBook={handleBook} contacted={contactedVendorIds.has(pkg.vendorId)} />)}
+                        </div>
+                        <div className="hidden lg:flex flex-col gap-3">
+                          {allPackages.map((pkg) => <PackageCard key={pkg.id} pkg={pkg} onBook={handleBook} listView contacted={contactedVendorIds.has(pkg.vendorId)} />)}
+                        </div>
+
+                        {/* Pagination */}
+                        {pkgTotal > PKG_LIMIT && (
+                          <div className="mt-8 flex justify-center gap-2 overflow-x-auto scrollbar-hide pb-1">
+                            <button
+                              onClick={() => { setPkgPage((p) => Math.max(1, p - 1)); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+                              disabled={pkgPage === 1}
+                              className="w-10 h-10 rounded-full border border-gray-200 text-gray-600 hover:border-red-400 disabled:opacity-40 transition flex items-center justify-center font-bold"
+                            >‹</button>
+                            {[...Array(Math.min(Math.ceil(pkgTotal / PKG_LIMIT), 10))].map((_, i) => (
+                              <button key={i} onClick={() => { setPkgPage(i + 1); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+                                className={`w-10 h-10 rounded-full text-sm font-bold transition ${pkgPage === i + 1 ? 'bg-red-600 text-white shadow-md' : 'bg-white border border-gray-200 text-gray-600 hover:border-red-400 hover:text-red-600'}`}>
+                                {i + 1}
+                              </button>
+                            ))}
+                            <button
+                              onClick={() => { setPkgPage((p) => Math.min(Math.ceil(pkgTotal / PKG_LIMIT), p + 1)); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+                              disabled={pkgPage >= Math.ceil(pkgTotal / PKG_LIMIT)}
+                              className="w-10 h-10 rounded-full border border-gray-200 text-gray-600 hover:border-red-400 disabled:opacity-40 transition flex items-center justify-center font-bold"
+                            >›</button>
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <div className="text-center py-20">
+                        <div className="text-6xl mb-4">📦</div>
+                        <h3 className="text-lg font-extrabold text-gray-800 mb-2">No packages found</h3>
+                        <p className="text-gray-500 text-sm mb-5 max-w-sm mx-auto">
+                          Try removing some filters, or browse all cities.
+                        </p>
+                        <div className="flex gap-3 justify-center">
+                          <button onClick={resetFilters}
+                            className="bg-red-600 text-white px-6 py-2.5 rounded-full text-sm font-bold hover:bg-red-700 transition">
+                            Clear Filters
+                          </button>
+                          <button onClick={() => setActiveTab('vendors')}
+                            className="border border-gray-200 text-gray-700 px-6 py-2.5 rounded-full text-sm font-semibold hover:border-red-300 transition">
+                            Browse Vendors
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
             )}
@@ -845,17 +950,17 @@ function SearchPageInner() {
                 ) : result?.data?.length ? (
                   <>
                     <div className="sm:hidden grid grid-cols-2 gap-3">
-                      {result.data.map((v) => <VendorCard key={v.id} vendor={v} onGetQuote={setSelectedVendor} />)}
+                      {result.data.map((v) => <VendorCard key={v.id} vendor={v} onGetQuote={setSelectedVendor} contacted={contactedVendorIds.has(v.id)} />)}
                     </div>
                     {viewMode === 'list' ? (
                       <div className="hidden sm:flex flex-col gap-3">
                         {result.data.map((v, idx) => (
-                          <VendorListCard key={v.id} vendor={v} rank={idx + 1 + (filters.page - 1) * 12} onGetQuote={setSelectedVendor} />
+                          <VendorListCard key={v.id} vendor={v} rank={idx + 1 + (filters.page - 1) * 12} onGetQuote={setSelectedVendor} contacted={contactedVendorIds.has(v.id)} />
                         ))}
                       </div>
                     ) : (
                       <div className="hidden sm:grid sm:grid-cols-2 xl:grid-cols-3 gap-4">
-                        {result.data.map((v) => <VendorCard key={v.id} vendor={v} onGetQuote={setSelectedVendor} />)}
+                        {result.data.map((v) => <VendorCard key={v.id} vendor={v} onGetQuote={setSelectedVendor} contacted={contactedVendorIds.has(v.id)} />)}
                       </div>
                     )}
                     {result.meta.pages > 1 && (

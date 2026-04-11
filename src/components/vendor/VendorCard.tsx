@@ -31,9 +31,10 @@ interface Props {
   budgetFit?: number;
   /** Event type context — shows "Matches your event" badge */
   eventType?: string;
+  contacted?: boolean;
 }
 
-export default function VendorCard({ vendor, showLeadButton = true, onGetQuote, budgetFit, eventType }: Props) {
+export default function VendorCard({ vendor, showLeadButton = true, onGetQuote, budgetFit, eventType, contacted = false }: Props) {
   const priceRange =
     vendor.minPrice && vendor.maxPrice
       ? `₹${(vendor.minPrice / 1000).toFixed(0)}K – ₹${(vendor.maxPrice / 1000).toFixed(0)}K`
@@ -107,11 +108,18 @@ export default function VendorCard({ vendor, showLeadButton = true, onGetQuote, 
 
       {/* Content */}
       <div className="p-4">
-        <Link href={`/vendor/${vendor.slug}`}>
-          <h3 className="font-semibold text-gray-900 hover:text-red-700 line-clamp-1 text-sm sm:text-base transition mb-1">
-            {vendor.businessName}
-          </h3>
-        </Link>
+        <div className="flex items-start gap-2 mb-1">
+          <Link href={`/vendor/${vendor.slug}`} className="flex-1 min-w-0">
+            <h3 className="font-semibold text-gray-900 hover:text-red-700 line-clamp-1 text-sm sm:text-base transition">
+              {vendor.businessName}
+            </h3>
+          </Link>
+          {contacted && (
+            <span className="inline-flex items-center gap-1 text-[9px] font-extrabold bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full shrink-0 mt-0.5">
+              ✓ Connected
+            </span>
+          )}
+        </div>
 
         {vendor.categories && vendor.categories.length > 0 && (
           <p className="text-xs text-red-600 font-medium mb-2">

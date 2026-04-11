@@ -1,13 +1,13 @@
 'use client';
 
-import { Suspense, useState, useEffect, useCallback, useRef } from 'react';
+import { Suspense, useState, useEffect, useCallback } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { searchApi, locationsApi } from '@/lib/api';
-import { City, EventPlanV2, EventPackage, PackageService, Vendor } from '@/types';
-import LeadModal from '@/components/lead/LeadModal';
-import PackageCard from '@/components/packages/PackageCard';
+import { searchApi, locationsApi, leadsApi } from '@/lib/api';
+import { City, EventPlanV2, EventPackage, PackageService } from '@/types';
 import { Analytics } from '@/lib/analytics';
+import { addBookings, getBookings, type BookedVendor } from '@/lib/bookings';
+import { useAppStore } from '@/store/useAppStore';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -210,13 +210,18 @@ function ConfidenceBadge({ score }: { score: number }) {
 
 // ─── Service Row (full / compact) ────────────────────────────────────────────
 
-function ServiceRow({ svc, compact = false }: { svc: PackageService; compact?: boolean }) {
+function ServiceRow({ svc, compact = false, contacted = false }: { svc: PackageService; compact?: boolean; contacted?: boolean }) {
   if (compact) {
     return (
       <div className="flex items-center gap-3 py-2.5 border-b border-gray-50 last:border-0">
         <span className="text-xl shrink-0 w-8 text-center">{catIcon(svc.category)}</span>
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold text-gray-900 truncate">{svc.vendorName}</p>
+          <div className="flex items-center gap-1.5">
+            <p className="text-sm font-semibold text-gray-900 truncate">{svc.vendorName}</p>
+            {contacted && (
+              <span className="text-[9px] font-extrabold bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full shrink-0">✓ Connected</span>
+            )}
+          </div>
           <p className="text-xs text-gray-400">{catLabel(svc.category)}</p>
         </div>
         <div className="text-right shrink-0">
@@ -228,12 +233,17 @@ function ServiceRow({ svc, compact = false }: { svc: PackageService; compact?: b
   }
 
   return (
-    <div className="flex items-center gap-3 py-3 border-b border-gray-50 last:border-0">
+    <div className={`flex items-center gap-3 py-3 border-b border-gray-50 last:border-0 ${contacted ? 'bg-green-50/50 -mx-1 px-1 rounded-lg' : ''}`}>
       <div className="w-11 h-11 rounded-xl bg-gray-50 flex items-center justify-center text-xl shrink-0">
         {catIcon(svc.category)}
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-bold text-gray-900 truncate">{svc.vendorName}</p>
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <p className="text-sm font-bold text-gray-900 truncate">{svc.vendorName}</p>
+          {contacted && (
+            <span className="text-[9px] font-extrabold bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full shrink-0">✓ Connected</span>
+          )}
+        </div>
         <p className="text-[11px] text-gray-400 capitalize mb-0.5">{catLabel(svc.category)}</p>
         <p className="text-[11px] text-gray-500 line-clamp-1">{svc.reason}</p>
       </div>
@@ -257,12 +267,16 @@ function PrimaryPackageCard({
   onBook,
   onCustomize,
   onCompare,
+  contactedVendorIds,
+  alreadyBooked,
 }: {
   pkg: EventPackage;
   guestCount?: number;
   onBook: () => void;
   onCustomize: () => void;
   onCompare: () => void;
+  contactedVendorIds?: Set<number>;
+  alreadyBooked?: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
   const meta = TAG_META[pkg.tag];
@@ -286,7 +300,8 @@ function PrimaryPackageCard({
               <ConfidenceBadge score={pkg.confidenceScore} />
             </div>
             <h2 className="text-lg font-extrabold text-gray-900 leading-tight">{pkg.name}</h2>
-            <p className="text-xs text-gray-400 mt-0.5">{pkg.services.length} service{pkg.services.length !== 1 ? 's' : ''} included</p>
+            <p className="text-xs text-gray-500 mt-0.5">{TIER_DESC[pkg.tag]}</p>
+            <p className="text-[10px] text-gray-400 mt-0.5">{pkg.services.length} service{pkg.services.length !== 1 ? 's' : ''} included</p>
           </div>
           <div className="text-right shrink-0">
             <p className="text-[10px] text-gray-400 uppercase tracking-wider mb-0.5">Total Est.</p>
@@ -314,7 +329,11 @@ function PrimaryPackageCard({
         <div className="px-5 pb-1">
           <p className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest pt-3 pb-2">Services Included</p>
           {shown.map(svc => (
-            <ServiceRow key={`${svc.vendorId}-${svc.category}`} svc={svc} />
+            <ServiceRow
+              key={`${svc.vendorId}-${svc.category}`}
+              svc={svc}
+              contacted={contactedVendorIds?.has(svc.vendorId)}
+            />
           ))}
           {pkg.services.length > 5 && (
             <button
@@ -339,12 +358,19 @@ function PrimaryPackageCard({
 
       {/* ── CTAs ── */}
       <div className="px-5 pb-5 flex flex-col sm:flex-row gap-2 mt-1">
-        <button
-          onClick={onBook}
-          className={`flex-1 py-3.5 rounded-xl font-extrabold text-white text-sm shadow-lg transition-all active:scale-[0.98] hover:opacity-90 ${meta.btnCls}`}
-        >
-          Book This Plan — Free
-        </button>
+        {alreadyBooked ? (
+          <div className="flex-1 py-3.5 rounded-xl font-extrabold text-green-700 bg-green-50 border border-green-200 text-sm text-center flex items-center justify-center gap-2">
+            <span className="w-5 h-5 rounded-full bg-green-600 text-white flex items-center justify-center text-xs font-black">✓</span>
+            Plan Connected — vendors notified
+          </div>
+        ) : (
+          <button
+            onClick={onBook}
+            className={`flex-1 py-3.5 rounded-xl font-extrabold text-white text-sm shadow-lg transition-all active:scale-[0.98] hover:opacity-90 ${meta.btnCls}`}
+          >
+            Connect All Vendors — Free
+          </button>
+        )}
         <button
           onClick={onCustomize}
           className="sm:flex-none px-5 py-3.5 rounded-xl font-bold text-gray-700 bg-gray-100 hover:bg-gray-200 text-sm transition-all active:scale-[0.98]"
@@ -361,6 +387,13 @@ function PrimaryPackageCard({
     </div>
   );
 }
+
+// Tier descriptions for UI clarity
+const TIER_DESC: Record<string, string> = {
+  Budget:      'Essential services · Most affordable',
+  Recommended: 'Best quality-price balance · Our top pick',
+  Premium:     'Highest-rated vendors · Full experience',
+};
 
 // ─── Alternative Package Card — cleaner ──────────────────────────────────────
 
@@ -382,6 +415,10 @@ function AltCard({
     ? pkg.estimatedCost - recommended.estimatedCost
     : 0;
 
+  // Detect if vendors are same as recommended (city has limited vendor pool)
+  const recVendorIds = new Set((recommended?.services ?? []).map(s => s.vendorId));
+  const sameVendors = pkg.services.length > 0 && pkg.services.every(s => recVendorIds.has(s.vendorId));
+
   return (
     <div
       onClick={onSelect}
@@ -394,12 +431,15 @@ function AltCard({
 
       <div className="px-4 py-3">
         {/* Badge row */}
-        <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center justify-between mb-1">
           <span className={`text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-full ${meta.badge}`}>
             {meta.icon} {meta.label}
           </span>
           <ConfidenceBadge score={pkg.confidenceScore} />
         </div>
+
+        {/* Tier description */}
+        <p className="text-[10px] text-gray-400 mb-2 leading-relaxed">{TIER_DESC[pkg.tag]}</p>
 
         {/* Price */}
         <p className="text-xl font-black text-gray-900">
@@ -415,6 +455,13 @@ function AltCard({
 
         {guestCount && guestCount > 0 && pkg.pricePerGuest > 0 && (
           <p className="text-[10px] text-gray-400 mt-0.5">{fmt(pkg.pricePerGuest)}/guest</p>
+        )}
+
+        {/* Same vendor note */}
+        {sameVendors && (
+          <p className="text-[10px] text-blue-500 mt-1 font-medium">
+            {pkg.tag === 'Budget' ? '↓ Entry-level offering from same vendors' : '↑ Premium offering from same vendors'}
+          </p>
         )}
 
         {/* Services preview */}
@@ -491,6 +538,58 @@ function BudgetBreakdown({ breakdown, totalBudget }: { breakdown: Record<string,
             </div>
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── Inline Compare Section (desktop) ────────────────────────────────────────
+
+function InlineCompareSection({
+  data,
+  allPackages,
+  activePkg,
+  onSelect,
+}: {
+  data: EventPlanV2['comparePackages'];
+  allPackages: EventPackage[];
+  activePkg: EventPackage;
+  onSelect: (pkg: EventPackage) => void;
+}) {
+  if (!data.comparison.length) return null;
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+      <div className="px-5 pt-4 pb-3 border-b border-gray-50 flex items-center gap-2">
+        <span className="text-base">⚖️</span>
+        <h3 className="font-extrabold text-gray-900 text-sm">Compare All Plans</h3>
+        <span className="text-xs text-gray-400">All tiers side-by-side</span>
+      </div>
+      <CompareTable data={data} />
+      <div className="px-4 pb-4 pt-3 bg-gray-50 border-t border-gray-100">
+        <p className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest mb-2">Select a plan</p>
+        <div className="grid grid-cols-3 gap-2">
+          {data.comparison.map((c) => {
+            const m = TAG_META[c.tag as keyof typeof TAG_META];
+            const pkg = allPackages.find((p) => p.tag === c.tag);
+            const isActive = activePkg.tag === c.tag;
+            return (
+              <button
+                key={c.tag}
+                onClick={() => pkg && onSelect(pkg)}
+                className={`py-2.5 rounded-xl font-bold text-xs transition-all active:scale-[0.98] ${
+                  isActive
+                    ? `text-white ${m?.btnCls ?? 'bg-gray-600'}`
+                    : 'bg-white border border-gray-200 text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                {isActive ? '✓ Selected' : `${m?.icon ?? ''} ${c.tag}`}
+                <span className={`block text-[10px] mt-0.5 ${isActive ? 'text-white/70' : 'text-gray-400'}`}>
+                  {fmt(c.totalCost)}
+                </span>
+              </button>
+            );
+          })}
+        </div>
       </div>
     </div>
   );
@@ -821,12 +920,233 @@ function LowCoverageFallback({
   );
 }
 
+// ─── Plan Booking Modal ───────────────────────────────────────────────────────
+
+interface PlanBookingForm {
+  name: string;
+  phone: string;
+  email: string;
+}
+
+function PlanBookingModal({
+  pkg,
+  eventType,
+  budget,
+  cityId,
+  guestCount,
+  defaultName,
+  defaultPhone,
+  onClose,
+  onBooked,
+}: {
+  pkg: EventPackage;
+  eventType: string;
+  budget: number;
+  cityId: number;
+  guestCount?: number;
+  defaultName?: string;
+  defaultPhone?: string;
+  onClose: () => void;
+  onBooked: (groupId: string) => void;
+}) {
+  const meta = TAG_META[pkg.tag];
+  const [form, setForm] = useState<PlanBookingForm>({ name: defaultName || '', phone: defaultPhone || '', email: '' });
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form.name.trim() || !form.phone.trim()) { setError('Name and phone are required'); return; }
+    if (!/^[6-9]\d{9}$/.test(form.phone.replace(/\s/g, ''))) { setError('Enter a valid 10-digit mobile number'); return; }
+    setSubmitting(true);
+    setError('');
+    try {
+      const vendorIds = pkg.services.map(s => s.vendorId);
+      const res = await leadsApi.planBooking({
+        vendorIds,
+        contactName: form.name.trim(),
+        contactPhone: form.phone.trim(),
+        contactEmail: form.email.trim() || undefined,
+        eventType,
+        budget,
+        cityId,
+        guestCount,
+        planTag: pkg.tag,
+        source: 'event_plan',
+        requirement: `${pkg.tag} plan for ${eventType} — ${pkg.services.length} services`,
+      }) as any;
+      // Save to localStorage
+      const groupId: string = res?.groupId || '';
+      const bookedVendors: BookedVendor[] = pkg.services.map(svc => ({
+        vendorId: svc.vendorId,
+        vendorName: svc.vendorName,
+        category: svc.category,
+        price: svc.price,
+        eventType,
+        planTag: pkg.tag,
+        bookedAt: new Date().toISOString(),
+        groupId,
+      }));
+      addBookings(bookedVendors);
+      onBooked(groupId);
+    } catch (err: any) {
+      setError(err?.message || 'Could not send your request. Please try again.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // Close on backdrop click
+  return (
+    <>
+      <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+        <div className="w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-2xl shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
+          {/* Header */}
+          <div className={`h-1 ${meta.accent}`} />
+          <div className="px-5 pt-5 pb-4 flex items-start justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <span className={`text-[10px] font-extrabold uppercase tracking-widest px-2 py-0.5 rounded-full ${meta.badge}`}>
+                  {meta.icon} {pkg.tag} Plan
+                </span>
+              </div>
+              <h3 className="text-lg font-extrabold text-gray-900">Connect with {pkg.services.length} vendors</h3>
+              <p className="text-xs text-gray-400 mt-0.5">
+                All vendors will receive your requirements and contact you within 2–4 hours.
+              </p>
+            </div>
+            <button onClick={onClose} className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-500 shrink-0 active:bg-gray-200">✕</button>
+          </div>
+
+          {/* Vendor chips */}
+          <div className="px-5 pb-4">
+            <p className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest mb-2">Vendors in this plan</p>
+            <div className="flex flex-wrap gap-1.5">
+              {pkg.services.map(svc => (
+                <span key={svc.vendorId} className="inline-flex items-center gap-1 text-xs bg-gray-100 text-gray-700 px-2.5 py-1 rounded-full font-medium">
+                  {catIcon(svc.category)} {svc.vendorName}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          {/* Form */}
+          <form onSubmit={handleSubmit} className="px-5 pb-6 space-y-3">
+            <div>
+              <label className="text-xs font-bold text-gray-600 mb-1 block">Your Name *</label>
+              <input
+                type="text"
+                value={form.name}
+                onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+                placeholder="Full name"
+                className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-bold text-gray-600 mb-1 block">Mobile Number *</label>
+              <input
+                type="tel"
+                value={form.phone}
+                onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
+                placeholder="10-digit mobile number"
+                className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-bold text-gray-600 mb-1 block">Email <span className="text-gray-400 font-normal">(optional)</span></label>
+              <input
+                type="email"
+                value={form.email}
+                onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
+                placeholder="you@example.com"
+                className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
+              />
+            </div>
+            {error && <p className="text-red-600 text-sm font-medium">{error}</p>}
+            <button
+              type="submit"
+              disabled={submitting}
+              className={`w-full py-4 rounded-xl font-extrabold text-white text-sm shadow-lg transition-all active:scale-[0.98] disabled:opacity-60 ${meta.btnCls}`}
+            >
+              {submitting ? 'Sending to vendors…' : `Send to ${pkg.services.length} Vendors — Free`}
+            </button>
+            <p className="text-center text-[10px] text-gray-400">Free · No obligation · Vendors contact you directly</p>
+          </form>
+        </div>
+      </div>
+    </>
+  );
+}
+
+// ─── Booking Success Panel ────────────────────────────────────────────────────
+
+function BookingSuccessPanel({ bookings, onClose }: { bookings: BookedVendor[]; onClose: () => void }) {
+  if (bookings.length === 0) return null;
+  return (
+    <div className="bg-green-50 border border-green-200 rounded-2xl p-4">
+      <div className="flex items-start justify-between gap-3 mb-3">
+        <div>
+          <div className="flex items-center gap-2">
+            <span className="w-6 h-6 rounded-full bg-green-600 text-white flex items-center justify-center text-xs font-black">✓</span>
+            <p className="text-sm font-extrabold text-green-800">Plan Booked Successfully!</p>
+          </div>
+          <p className="text-xs text-green-700 mt-1">
+            {bookings.length} vendor{bookings.length !== 1 ? 's' : ''} notified — they&apos;ll contact you within 2–4 hours.
+          </p>
+        </div>
+        <button onClick={onClose} className="text-green-600 text-xs font-bold shrink-0">Dismiss</button>
+      </div>
+      <div className="space-y-1.5">
+        {bookings.map(b => (
+          <div key={b.vendorId} className="flex items-center gap-2 bg-white rounded-xl px-3 py-2">
+            <span className="text-base">{catIcon(b.category)}</span>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-bold text-gray-900 truncate">{b.vendorName}</p>
+              <p className="text-[10px] text-gray-400">{catLabel(b.category)}</p>
+            </div>
+            <p className="text-xs font-extrabold text-gray-900 shrink-0">{b.price > 0 ? fmt(b.price) : '—'}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── Booked Services Sidebar Panel ───────────────────────────────────────────
+
+function BookedServicesPanel({ bookings }: { bookings: BookedVendor[] }) {
+  if (bookings.length === 0) return null;
+  return (
+    <div className="bg-white rounded-2xl border border-green-200 shadow-sm p-5">
+      <div className="flex items-center gap-2 mb-3">
+        <span className="w-5 h-5 rounded-full bg-green-600 text-white flex items-center justify-center text-[10px] font-black">✓</span>
+        <p className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest">Your Bookings</p>
+      </div>
+      <div className="space-y-2">
+        {bookings.map(b => (
+          <div key={b.vendorId} className="flex items-center gap-2">
+            <span className="text-base">{catIcon(b.category)}</span>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-bold text-gray-900 truncate">{b.vendorName}</p>
+              <p className="text-[10px] text-gray-400">{catLabel(b.category)} · {b.planTag}</p>
+            </div>
+            <span className="text-[9px] font-extrabold bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full shrink-0">Connected</span>
+          </div>
+        ))}
+      </div>
+      <p className="text-[10px] text-gray-400 mt-3 text-center">Vendors will contact you within 2–4 hours</p>
+    </div>
+  );
+}
+
 // ─── Main Plan Content ────────────────────────────────────────────────────────
 
 function PlanContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
 
+  const user = useAppStore(s => s.user);
   const [plan, setPlan] = useState<EventPlanV2 | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -834,7 +1154,10 @@ function PlanContent() {
   const [activePkg, setActivePkg] = useState<EventPackage | null>(null);
   const [sheetCompare, setSheetCompare] = useState(false);
   const [sheetCustomize, setSheetCustomize] = useState(false);
-  const [leadVendor, setLeadVendor] = useState<Vendor | null>(null);
+  const [showBookingModal, setShowBookingModal] = useState(false);
+  const [latestBookings, setLatestBookings] = useState<BookedVendor[]>([]);
+  const [showSuccessBanner, setShowSuccessBanner] = useState(false);
+  const [contactedVendorIds, setContactedVendorIds] = useState<Set<number>>(new Set());
 
   const params = {
     eventType: searchParams.get('eventType') || 'wedding',
@@ -898,16 +1221,28 @@ function PlanContent() {
     router.push(`/plan?${sp.toString()}`);
   };
 
+  // Load contacted vendor IDs from localStorage on mount
+  useEffect(() => {
+    setContactedVendorIds(new Set(getBookings().map(b => b.vendorId)));
+  }, []);
+
   const handleBook = () => {
-    if (!activePkg?.services[0]) return;
+    if (!activePkg?.services.length) return;
     Analytics.bookClick(activePkg.tag, activePkg.estimatedCost);
-    const svc = activePkg.services[0];
-    setLeadVendor({
-      id: svc.vendorId, businessName: svc.vendorName, slug: svc.vendorSlug,
-      logo: svc.logo, rating: svc.rating, reviewCount: 0, profileViews: 0,
-      profileScore: 0, isFeatured: false, isVerified: false, cityId: Number(params.cityId),
-      status: 'active', minPrice: svc.price,
-    });
+    setShowBookingModal(true);
+  };
+
+  const handleBooked = (groupId: string) => {
+    setShowBookingModal(false);
+    // Refresh contacted vendor IDs from localStorage
+    const allBookings = getBookings();
+    setContactedVendorIds(new Set(allBookings.map(b => b.vendorId)));
+    // Show the latest bookings in success banner
+    const latest = allBookings.filter(b => b.groupId === groupId);
+    setLatestBookings(latest);
+    setShowSuccessBanner(true);
+    // Scroll to top of left column
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const theme = EVENT_THEMES[params.eventType] ?? EVENT_THEMES.default;
@@ -959,7 +1294,7 @@ function PlanContent() {
 
       {/* ── Hero ─────────────────────────────────────────────────────────────── */}
       <div className={`bg-gradient-to-br ${theme.from} ${theme.via} ${theme.to} text-white`}>
-        <div className="max-w-xl mx-auto px-4 pt-8 pb-5">
+        <div className="max-w-7xl mx-auto px-4 pt-8 pb-5">
           {/* Event info row */}
           <div className="flex items-start justify-between gap-3 mb-4">
             <div>
@@ -1013,118 +1348,235 @@ function PlanContent() {
         </div>
       </div>
 
-      {/* ── Scrollable body ──────────────────────────────────────────────────── */}
-      <div className="max-w-xl mx-auto px-4 py-4 space-y-4 pb-28 sm:pb-8">
+      {/* ── Body: 2-column on desktop ─────────────────────────────────────── */}
+      <div className="max-w-7xl mx-auto px-4 py-4 pb-28 lg:pb-8">
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-6 items-start">
 
-        {/* Loading */}
-        {loading && <PlanLoading eventType={params.eventType} />}
+          {/* ── Left column ── */}
+          <div className="space-y-4">
 
-        {/* Error */}
-        {error && (
-          <div className="bg-red-50 border border-red-200 rounded-2xl p-6 text-center">
-            <p className="text-red-700 font-semibold mb-4">{error}</p>
-            <button
-              onClick={() => fetchPlan(params)}
-              className="px-6 py-3 bg-red-600 text-white rounded-xl font-bold text-sm hover:bg-red-700 transition-all"
-            >
-              Try Again
-            </button>
-          </div>
-        )}
+            {/* Loading */}
+            {loading && <PlanLoading eventType={params.eventType} />}
 
-        {plan && !loading && (
-          <>
-            {/* ── Low coverage fallback ── */}
-            {!hasGoodCoverage && (
-              <LowCoverageFallback
-                cityName={cityName}
-                eventType={params.eventType}
-                budget={Number(params.budget)}
-                plan={plan}
-                onCustomize={() => setSheetCustomize(true)}
-              />
+            {/* Error */}
+            {error && (
+              <div className="bg-red-50 border border-red-200 rounded-2xl p-6 text-center">
+                <p className="text-red-700 font-semibold mb-4">{error}</p>
+                <button
+                  onClick={() => fetchPlan(params)}
+                  className="px-6 py-3 bg-red-600 text-white rounded-xl font-bold text-sm hover:bg-red-700 transition-all"
+                >
+                  Try Again
+                </button>
+              </div>
             )}
 
-            {/* ── Full plan with good vendor coverage ── */}
-            {hasGoodCoverage && activePkg && (
+            {plan && !loading && (
               <>
-                {/* ── 1. Primary package (selected) ── */}
-                <PrimaryPackageCard
-                  pkg={activePkg}
-                  guestCount={guestCount}
-                  onBook={handleBook}
-                  onCustomize={() => { Analytics.customizeClick(); setSheetCustomize(true); }}
-                  onCompare={() => { Analytics.compareClick(); setSheetCompare(true); }}
-                />
-
-                {/* ── 2. Compare tiers — alt packages ── */}
-                {alternatives.length > 0 && (
-                  <div>
-                    <p className="text-xs font-extrabold text-gray-400 uppercase tracking-widest mb-3">Compare Plans</p>
-                    <div className="grid grid-cols-2 gap-3">
-                      {allPackages.filter(p => p.tag !== activePkg.tag).map(alt => (
-                        <AltCard
-                          key={alt.tag}
-                          pkg={alt}
-                          guestCount={guestCount}
-                          isActive={activePkg.tag === alt.tag}
-                          recommended={plan.recommended}
-                          onSelect={() => {
-                            Analytics.packageSelect(alt.tag, alt.estimatedCost);
-                            setActivePkg(alt);
-                            window.scrollTo({ top: 0, behavior: 'smooth' });
-                          }}
-                        />
-                      ))}
-                    </div>
-                  </div>
+                {/* Low coverage fallback */}
+                {!hasGoodCoverage && (
+                  <LowCoverageFallback
+                    cityName={cityName}
+                    eventType={params.eventType}
+                    budget={Number(params.budget)}
+                    plan={plan}
+                    onCustomize={() => setSheetCustomize(true)}
+                  />
                 )}
 
-                {/* ── 3. Budget Breakdown ── */}
-                <BudgetBreakdown
-                  breakdown={plan.breakdown ?? {}}
-                  totalBudget={plan.meta?.totalBudget ?? Number(params.budget)}
-                />
+                {hasGoodCoverage && activePkg && (
+                  <>
+                    {/* Success banner after booking */}
+                    {showSuccessBanner && latestBookings.length > 0 && (
+                      <BookingSuccessPanel
+                        bookings={latestBookings}
+                        onClose={() => setShowSuccessBanner(false)}
+                      />
+                    )}
 
-                {/* ── 4. Trust strip ── */}
-                <div className="bg-white rounded-xl border border-gray-100 px-4 py-3">
-                  <div className="grid grid-cols-2 gap-2">
-                    {[
-                      '✓ 2,000+ verified vendors',
-                      '✓ 4.8★ avg rating',
-                      '✓ 50K+ happy families',
-                      '✓ Free quotes, always',
-                    ].map(t => (
-                      <div key={t} className="flex items-center gap-1.5">
-                        <span className="text-green-600 font-black text-xs">{t.slice(0, 1)}</span>
-                        <span className="text-xs text-gray-500">{t.slice(2)}</span>
+                    {/* Primary package */}
+                    <PrimaryPackageCard
+                      pkg={activePkg}
+                      guestCount={guestCount}
+                      onBook={handleBook}
+                      onCustomize={() => { Analytics.customizeClick(); setSheetCustomize(true); }}
+                      onCompare={() => { Analytics.compareClick(); setSheetCompare(true); }}
+                      contactedVendorIds={contactedVendorIds}
+                      alreadyBooked={activePkg.services.length > 0 && activePkg.services.every(s => contactedVendorIds.has(s.vendorId))}
+                    />
+
+                    {/* Mobile only: AltCards tier switcher */}
+                    {alternatives.length > 0 && (
+                      <div className="lg:hidden">
+                        <p className="text-xs font-extrabold text-gray-400 uppercase tracking-widest mb-3">Compare Plans</p>
+                        <div className="grid grid-cols-2 gap-3">
+                          {allPackages.filter(p => p.tag !== activePkg.tag).map(alt => (
+                            <AltCard
+                              key={alt.tag}
+                              pkg={alt}
+                              guestCount={guestCount}
+                              isActive={activePkg.tag === alt.tag}
+                              recommended={plan.recommended}
+                              onSelect={() => {
+                                Analytics.packageSelect(alt.tag, alt.estimatedCost);
+                                setActivePkg(alt);
+                                window.scrollTo({ top: 0, behavior: 'smooth' });
+                              }}
+                            />
+                          ))}
+                        </div>
                       </div>
-                    ))}
-                  </div>
-                </div>
+                    )}
 
-                {/* Meta */}
-                {plan.meta?.generatedAt && (
-                  <p className="text-center text-[10px] text-gray-300">
-                    AI plan · {new Date(plan.meta.generatedAt).toLocaleTimeString()} · Powered by Plantoday
-                  </p>
+                    {/* Mobile only: Budget Breakdown */}
+                    <div className="lg:hidden">
+                      <BudgetBreakdown
+                        breakdown={plan.breakdown ?? {}}
+                        totalBudget={plan.meta?.totalBudget ?? Number(params.budget)}
+                      />
+                    </div>
+
+                    {/* Desktop only: Inline compare table */}
+                    {(plan.comparePackages?.comparison?.length ?? 0) > 0 && (
+                      <div className="hidden lg:block">
+                        <InlineCompareSection
+                          data={plan.comparePackages}
+                          allPackages={allPackages}
+                          activePkg={activePkg}
+                          onSelect={(pkg) => {
+                            Analytics.packageSelect(pkg.tag, pkg.estimatedCost);
+                            setActivePkg(pkg);
+                          }}
+                        />
+                      </div>
+                    )}
+
+                    {/* Trust strip */}
+                    <div className="bg-white rounded-xl border border-gray-100 px-4 py-3">
+                      <div className="grid grid-cols-2 gap-2">
+                        {[
+                          '✓ 2,000+ verified vendors',
+                          '✓ 4.8★ avg rating',
+                          '✓ 50K+ happy families',
+                          '✓ Free quotes, always',
+                        ].map(t => (
+                          <div key={t} className="flex items-center gap-1.5">
+                            <span className="text-green-600 font-black text-xs">{t.slice(0, 1)}</span>
+                            <span className="text-xs text-gray-500">{t.slice(2)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {plan.meta?.generatedAt && (
+                      <p className="text-center text-[10px] text-gray-300">
+                        AI plan · {new Date(plan.meta.generatedAt).toLocaleTimeString()} · Powered by Plantoday
+                      </p>
+                    )}
+                  </>
                 )}
               </>
             )}
-          </>
-        )}
+          </div>
+
+          {/* ── Right sidebar — desktop only ── */}
+          <div className="hidden lg:flex flex-col gap-4 sticky top-20">
+
+            {/* Tier selector */}
+            {plan && !loading && hasGoodCoverage && activePkg && allPackages.length > 1 && (
+              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+                <p className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest mb-3">Switch Plan</p>
+                <div className="space-y-2">
+                  {allPackages.map(pkg => {
+                    const m = TAG_META[pkg.tag];
+                    const isActive = activePkg.tag === pkg.tag;
+                    return (
+                      <button
+                        key={pkg.tag}
+                        onClick={() => { Analytics.packageSelect(pkg.tag, pkg.estimatedCost); setActivePkg(pkg); }}
+                        className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl border-2 transition-all text-left ${
+                          isActive ? `${m.border} ${m.light}` : 'border-gray-100 hover:border-gray-200 bg-white'
+                        }`}
+                      >
+                        <span className="text-xl shrink-0">{m.icon}</span>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5 mb-0.5">
+                            <p className={`text-xs font-extrabold uppercase tracking-wide ${isActive ? 'text-gray-700' : 'text-gray-400'}`}>{m.label}</p>
+                            {isActive && <span className="text-[9px] bg-green-500 text-white px-1.5 py-0.5 rounded-full font-bold">Active</span>}
+                          </div>
+                          <p className="text-lg font-black text-gray-900 leading-none">{fmt(pkg.estimatedCost)}</p>
+                          <p className="text-[10px] text-gray-400 mt-0.5 leading-relaxed">{TIER_DESC[pkg.tag]}</p>
+                          {guestCount && guestCount > 0 && pkg.pricePerGuest > 0 && (
+                            <p className="text-[10px] text-gray-400">{fmt(pkg.pricePerGuest)}/guest</p>
+                          )}
+                        </div>
+                        {isActive && (
+                          <span className="text-white font-bold text-xs bg-green-500 w-5 h-5 rounded-full flex items-center justify-center shrink-0">✓</span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Budget breakdown */}
+            {plan && !loading && (
+              <BudgetBreakdown
+                breakdown={plan.breakdown ?? {}}
+                totalBudget={plan.meta?.totalBudget ?? Number(params.budget)}
+              />
+            )}
+
+            {/* Trending packages */}
+            {plan && !loading && (plan.trendingPackages ?? []).filter(p => p.estimatedCost > 0).length > 0 && (
+              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+                <p className="text-[10px] font-extrabold text-gray-400 uppercase tracking-widest mb-3">🔥 Trending Packages</p>
+                <div className="space-y-3">
+                  {(plan.trendingPackages ?? []).filter(p => p.estimatedCost > 0).slice(0, 3).map((pkg, i) => (
+                    <TrendingCard key={i} pkg={pkg} />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Booked services */}
+            {contactedVendorIds.size > 0 && (
+              <BookedServicesPanel bookings={getBookings()} />
+            )}
+
+            {/* Customize */}
+            {plan && !loading && (
+              <button
+                onClick={() => { Analytics.customizeClick(); setSheetCustomize(true); }}
+                className="w-full py-3 rounded-xl font-bold text-gray-600 bg-white border border-gray-200 hover:border-gray-300 text-sm transition-all"
+              >
+                ✏️ Customize Plan
+              </button>
+            )}
+
+          </div>
+
+        </div>
       </div>
 
       {/* ── Sticky bottom CTA bar — mobile only ────────────────────────────── */}
       {plan && activePkg && !loading && (
         <div className="fixed bottom-0 inset-x-0 z-30 sm:hidden bg-white/95 backdrop-blur-sm border-t border-gray-200 px-4 py-3 safe-bottom">
           <div className="flex gap-2">
-            <button
-              onClick={handleBook}
-              className={`flex-1 py-4 rounded-xl font-extrabold text-white text-sm shadow-lg transition-all active:scale-[0.98] ${TAG_META[activePkg.tag].btnCls}`}
-            >
-              Book This Plan
-            </button>
+            {activePkg.services.length > 0 && activePkg.services.every(s => contactedVendorIds.has(s.vendorId)) ? (
+              <div className="flex-1 py-4 rounded-xl font-extrabold text-green-700 bg-green-50 border border-green-200 text-sm text-center flex items-center justify-center gap-2">
+                <span className="w-5 h-5 rounded-full bg-green-600 text-white flex items-center justify-center text-xs font-black">✓</span>
+                Vendors Notified
+              </div>
+            ) : (
+              <button
+                onClick={handleBook}
+                className={`flex-1 py-4 rounded-xl font-extrabold text-white text-sm shadow-lg transition-all active:scale-[0.98] ${TAG_META[activePkg.tag].btnCls}`}
+              >
+                Connect All Vendors
+              </button>
+            )}
             <button
               onClick={() => setSheetCustomize(true)}
               className="px-4 py-4 rounded-xl font-bold text-gray-600 bg-gray-100 text-sm transition-all active:scale-[0.97]"
@@ -1170,13 +1622,18 @@ function PlanContent() {
         <CustomizeForm cities={cities} defaults={params} onSubmit={handleCustomizeSubmit} />
       </BottomSheet>
 
-      {/* ── Lead modal ─────────────────────────────────────────────────────── */}
-      {leadVendor && (
-        <LeadModal
-          vendor={leadVendor}
+      {/* ── Plan Booking Modal ──────────────────────────────────────────────── */}
+      {showBookingModal && activePkg && (
+        <PlanBookingModal
+          pkg={activePkg}
+          eventType={params.eventType}
           budget={Number(params.budget)}
+          cityId={Number(params.cityId)}
           guestCount={guestCount}
-          onClose={() => setLeadVendor(null)}
+          defaultName={user?.name}
+          defaultPhone={user?.phone}
+          onClose={() => setShowBookingModal(false)}
+          onBooked={handleBooked}
         />
       )}
     </div>

@@ -7,7 +7,7 @@ import { getVendorPanelData, type VendorPanelData } from '@/lib/vendor-panel';
 import { useAppStore } from '@/store/useAppStore';
 
 export default function VendorDashboardPage() {
-  const { user, openAuthModal } = useAppStore();
+  const { user } = useAppStore();
   const router = useRouter();
   const [panelData, setPanelData] = useState<VendorPanelData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -23,7 +23,12 @@ export default function VendorDashboardPage() {
     if (!hydrated) return;
 
     if (!user) {
-      openAuthModal();
+      // Desktop: navigate to login page with redirect; mobile: use bottom sheet
+      if (window.innerWidth >= 1024) {
+        router.replace('/auth/login?redirect=%2Fvendor%2Fdashboard');
+      } else {
+        router.replace('/auth/login?redirect=%2Fvendor%2Fdashboard');
+      }
       return;
     }
 

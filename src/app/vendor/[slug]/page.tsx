@@ -1,12 +1,14 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { useParams, useSearchParams } from 'next/navigation';
+import { useParams, usePathname, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { vendorsApi, packagesApi } from '@/lib/api';
 import type { Vendor, VendorPackage } from '@/types';
 import SmartLeadModal from '@/components/lead/SmartLeadModal';
 import { useLeadTrigger } from '@/hooks/useLeadTrigger';
+import { useAuth } from '@/hooks/useAuth';
+import LockedData from '@/components/ui/LockedData';
 import Image from 'next/image';
 
 function StarRating({ rating, count }: { rating: number; count: number }) {
@@ -234,7 +236,9 @@ function FromPlanBanner({ eventType, budget, cityId }: { eventType: string; budg
 
 export default function VendorProfilePage() {
   const { slug } = useParams<{ slug: string }>();
+  const pathname  = usePathname();
   const searchParams = useSearchParams();
+  const { isLoggedIn, requireAuth } = useAuth();
   const [vendor, setVendor]       = useState<Vendor | null>(null);
   const [loading, setLoading]     = useState(true);
   const [showLead, setShowLead]   = useState(false);
@@ -452,15 +456,12 @@ export default function VendorProfilePage() {
             </button>
 
             {vendor.phone && (
-              <a
-                href={`tel:+91${vendor.phone}`}
-                className="w-full flex items-center justify-center gap-2 border-2 border-gray-100 text-gray-700 font-semibold py-3 rounded-xl hover:border-purple-300 hover:text-purple-700 transition text-sm"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
-                </svg>
-                Call Now
-              </a>
+              <LockedData
+                value={vendor.phone}
+                type="phone"
+                variant="button"
+                redirectTo={pathname}
+              />
             )}
 
             <div className="mt-4 pt-4 border-t border-gray-50 space-y-2.5 text-xs text-gray-500">
@@ -484,14 +485,26 @@ export default function VendorProfilePage() {
           Get Free Quote
         </button>
         {vendor.phone && (
-          <a
-            href={`tel:+91${vendor.phone}`}
-            className="shrink-0 w-12 h-12 border-2 border-gray-100 rounded-2xl flex items-center justify-center text-gray-700 active:bg-gray-50 transition"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
-            </svg>
-          </a>
+          isLoggedIn ? (
+            <a
+              href={`tel:+91${vendor.phone.replace(/\D/g, '')}`}
+              className="shrink-0 w-12 h-12 border-2 border-emerald-200 bg-emerald-50 rounded-2xl flex items-center justify-center text-emerald-700 active:bg-emerald-100 transition"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+              </svg>
+            </a>
+          ) : (
+            <button
+              onClick={() => requireAuth(pathname)}
+              className="shrink-0 w-12 h-12 border-2 border-dashed border-gray-200 rounded-2xl flex items-center justify-center text-gray-400 hover:border-red-300 hover:text-red-500 active:bg-red-50 transition"
+              title="Login to call vendor"
+            >
+              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
+              </svg>
+            </button>
+          )
         )}
       </div>
 

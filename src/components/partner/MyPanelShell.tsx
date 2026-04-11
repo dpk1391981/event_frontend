@@ -33,7 +33,7 @@ import {
 } from '@/lib/vendor-panel';
 import { useAppStore } from '@/store/useAppStore';
 import { useRouter } from 'next/navigation';
-import { locationsApi, availabilityApi } from '@/lib/api';
+import { locationsApi, availabilityApi, vendorPanelApi } from '@/lib/api';
 
 const displayFont = Space_Grotesk({ subsets: ['latin'] });
 
@@ -389,7 +389,7 @@ export default function MyPanelShell({ data }: { data: VendorPanelData }) {
               <WalletSection balance={data.tokenBalance} walletHistory={data.walletHistory} />
             )}
             {activeSection === 'profile' && (
-              <ProfileSection checklist={data.profileChecklist} profileScore={data.profileScore} />
+              <ProfileSection checklist={data.profileChecklist} profileScore={data.profileScore} data={data} />
             )}
             {activeSection === 'availability' && <AvailabilitySection />}
             {activeSection === 'settings' && <SettingsSection />}
@@ -1360,40 +1360,127 @@ function WalletSection({ balance, walletHistory }: { balance: number; walletHist
 
 // ─── Profile ──────────────────────────────────────────────────────────────────
 
-function ProfileSection({ checklist, profileScore }: { checklist: ProfileChecklistItem[]; profileScore: number }) {
+function ProfileSection({
+  checklist, profileScore, data,
+}: {
+  checklist: ProfileChecklistItem[];
+  profileScore: number;
+  data: VendorPanelData;
+}) {
   const done = checklist.filter((i) => i.done).length;
-  return (
-    <div className="space-y-4">
-      <SectionHeader eyebrow="Profile" title="Profile Completeness" />
-      <div className="grid gap-4 lg:grid-cols-[260px_1fr]">
-        {/* Score */}
-        <div className="rounded-xl border border-gray-800 bg-gray-900 p-6">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Score</p>
-          <p className="mt-2 text-5xl font-bold text-white">{profileScore}<span className="text-xl text-gray-500">%</span></p>
-          <div className="mt-3 h-2 rounded-full bg-gray-800 overflow-hidden">
-            <div className="h-full rounded-full bg-gradient-to-r from-red-600 to-red-400" style={{ width: `${profileScore}%` }} />
-          </div>
-          <p className="mt-3 text-xs text-gray-500">{done} of {checklist.length} actions complete</p>
-          <p className="mt-2 text-xs text-gray-600 leading-relaxed">Higher score = better ranking + more lead volume.</p>
-        </div>
 
-        {/* Checklist */}
-        <div className="grid gap-3 sm:grid-cols-2 content-start">
-          {checklist.map((item) => (
-            <div key={item.id} className={`rounded-xl border p-4 ${item.done ? 'border-emerald-500/30 bg-emerald-500/5' : 'border-gray-800 bg-gray-900'}`}>
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="text-sm font-semibold text-white">{item.label}</p>
-                  <p className="mt-1 text-xs text-gray-500 leading-relaxed">{item.hint}</p>
-                </div>
-                <span className={`shrink-0 flex h-7 w-7 items-center justify-center rounded-lg text-xs font-bold ${
+  const [form, setForm] = useState({
+    businessName: data.vendorName ?? '',
+    phone:        data.vendorPhone ?? '',
+    description:  '',
+  });
+  const [saving, setSaving] = useState(false);
+  const [saved,  setSaved]  = useState(false);
+  const [err,    setErr]    = useState('');
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true); setErr(''); setSaved(false);
+    try {
+      await vendorPanelApi.updateProfile({
+        businessName: form.businessName,
+        phone:        form.phone,
+        description:  form.description || undefined,
+      });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+    } catch {
+      setErr('Could not save. Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <SectionHeader eyebrow="Profile" title="Business Profile" />
+
+      <div className="grid gap-6 lg:grid-cols-[1fr_280px]">
+        {/* Edit form */}
+        <form onSubmit={handleSave} className="rounded-xl border border-gray-800 bg-gray-900 p-6 space-y-5">
+          <p className="text-xs font-bold uppercase tracking-widest text-gray-500 mb-1">Edit Details</p>
+
+          <div>
+            <label className="block text-xs font-semibold text-gray-400 mb-1.5">Business Name</label>
+            <input
+              type="text"
+              value={form.businessName}
+              onChange={(e) => setForm((f) => ({ ...f, businessName: e.target.value }))}
+              className="w-full rounded-xl border border-gray-700 bg-gray-800 px-4 py-3 text-sm text-white placeholder-gray-600 outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 transition"
+              placeholder="e.g. Royal Events Photography"
+              required
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-gray-400 mb-1.5">Business Phone</label>
+            <input
+              type="tel"
+              value={form.phone}
+              onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
+              className="w-full rounded-xl border border-gray-700 bg-gray-800 px-4 py-3 text-sm text-white placeholder-gray-600 outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 transition"
+              placeholder="9876543210"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-gray-400 mb-1.5">Description</label>
+            <textarea
+              rows={3}
+              value={form.description}
+              onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+              className="w-full rounded-xl border border-gray-700 bg-gray-800 px-4 py-3 text-sm text-white placeholder-gray-600 outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 transition resize-none"
+              placeholder="Describe your services, specialties, experience..."
+            />
+          </div>
+
+          {err && <p className="text-xs text-red-400">{err}</p>}
+
+          <button
+            type="submit"
+            disabled={saving}
+            className="w-full bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-700 hover:to-rose-700 disabled:opacity-50 text-white font-bold py-3 rounded-xl text-sm transition flex items-center justify-center gap-2"
+          >
+            {saving ? (
+              <><span className="h-4 w-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />Saving…</>
+            ) : saved ? (
+              <><Check className="h-4 w-4" />Saved!</>
+            ) : 'Save Changes'}
+          </button>
+        </form>
+
+        {/* Score + checklist */}
+        <div className="space-y-4">
+          <div className="rounded-xl border border-gray-800 bg-gray-900 p-6">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Profile Score</p>
+            <p className="mt-2 text-5xl font-bold text-white">{profileScore}<span className="text-xl text-gray-500">/100</span></p>
+            <div className="mt-3 h-2 rounded-full bg-gray-800 overflow-hidden">
+              <div className="h-full rounded-full bg-gradient-to-r from-red-600 to-red-400" style={{ width: `${profileScore}%` }} />
+            </div>
+            <p className="mt-3 text-xs text-gray-500">{done} of {checklist.length} steps done</p>
+            <p className="mt-1 text-xs text-gray-600">Higher score = better ranking + more leads</p>
+          </div>
+
+          <div className="space-y-2">
+            {checklist.map((item) => (
+              <div key={item.id} className={`rounded-xl border px-4 py-3 flex items-start gap-3 ${item.done ? 'border-emerald-500/30 bg-emerald-500/5' : 'border-gray-800 bg-gray-900'}`}>
+                <span className={`shrink-0 flex h-6 w-6 items-center justify-center rounded-lg text-xs font-bold mt-0.5 ${
                   item.done ? 'bg-emerald-500/20 text-emerald-400' : 'bg-gray-800 text-gray-500'
                 }`}>
-                  {item.done ? <Check className="h-4 w-4" /> : `+${item.weight}`}
+                  {item.done ? <Check className="h-3.5 w-3.5" /> : `+${item.weight}`}
                 </span>
+                <div>
+                  <p className="text-xs font-semibold text-white">{item.label}</p>
+                  <p className="text-[11px] text-gray-500 mt-0.5">{item.hint}</p>
+                </div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       </div>
     </div>

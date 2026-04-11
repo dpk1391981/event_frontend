@@ -24,10 +24,40 @@ api.interceptors.response.use(
 
 // ─── Auth ────────────────────────────────────────────────────────────────────
 export const authApi = {
-  sendOtp: (phone: string) => api.post('/auth/send-otp', { phone }),
-  verifyOtp: (phone: string, otp: string) => api.post('/auth/verify-otp', { phone, otp }),
-  updateProfile: (data: { name: string; email?: string; role?: string }) =>
+  /** Returns { otpMode, emailConfigured, googleEnabled, googleClientId, showPhone } */
+  getConfig:    () => api.get('/auth/config'),
+  checkEmail:   (email: string) => api.get(`/auth/check-email?email=${encodeURIComponent(email)}`),
+
+  // ── Password auth ──
+  register: (data: { name: string; email: string; password: string }) =>
+    api.post('/auth/register', data),
+  login: (data: { email: string; password: string }) =>
+    api.post('/auth/login', data),
+  forgotPassword: (email: string) =>
+    api.post('/auth/forgot-password', { email }),
+  resetPassword: (token: string, newPassword: string) =>
+    api.post('/auth/reset-password', { token, newPassword }),
+  verifyEmail: (token: string) =>
+    api.get(`/auth/verify-email?token=${encodeURIComponent(token)}`),
+  resendVerification: () =>
+    api.post('/auth/resend-verification', {}),
+
+  // ── OTP auth ──
+  sendOtp: (identifier: { phone?: string; email?: string }) =>
+    api.post('/auth/send-otp', identifier),
+  verifyOtp: (identifier: { phone?: string; email?: string }, otp: string) =>
+    api.post('/auth/verify-otp', { ...identifier, otp }),
+
+  // ── Google ──
+  googleLogin: (credential: string) =>
+    api.post('/auth/google', { credential }),
+
+  // ── Profile & preferences ──
+  updateProfile: (data: { name: string; email?: string; phone?: string; role?: string }) =>
     api.patch('/auth/profile', data),
+  savePreferences: (data: {
+    budget?: string; cityId?: number; localityId?: number; eventTypes?: string[];
+  }) => api.patch('/auth/preferences', data),
   getMe: () => api.post('/auth/me'),
 };
 
@@ -88,10 +118,11 @@ export const categoriesApi = {
 export const leadsApi = {
   create: (data: unknown) => api.post('/leads', data),
   route: (data: unknown) => api.post('/leads/route', data),
-  getVendorLeads: (vendorId: number, page = 1, limit = 20) =>
-    api.get(`/leads/vendor/${vendorId}`, { params: { page, limit } }),
+  getVendorLeads: (vendorId: number, page = 1, limit = 20, status?: string) =>
+    api.get(`/leads/vendor/${vendorId}`, { params: { page, limit, status } }),
   getStats: (vendorId: number) => api.get(`/leads/vendor/${vendorId}/stats`),
   markViewed: (leadId: number) => api.patch(`/leads/${leadId}/viewed`),
+  updateStatus: (leadId: number, status: string) => api.patch(`/leads/${leadId}/status`, { status }),
 };
 
 // ─── Events (public discovery stubs) ─────────────────────────────────────────

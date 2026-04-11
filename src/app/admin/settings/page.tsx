@@ -8,6 +8,7 @@ const GROUP_INFO: Record<string, { label: string; icon: string; desc: string }> 
   tokens:       { label: 'Token Rules',     icon: '🪙', desc: 'Configure token costs and grants' },
   monetization: { label: 'Monetization',    icon: '💰', desc: 'Token-to-money conversion rates' },
   general:      { label: 'General',         icon: '⚙️', desc: 'Platform-wide settings' },
+  auth:         { label: 'Auth & Login',    icon: '🔐', desc: 'OTP delivery mode, SMTP email settings, Google login' },
 };
 
 const DATA_TYPE_INPUT: Record<string, string> = {
@@ -15,6 +16,12 @@ const DATA_TYPE_INPUT: Record<string, string> = {
   string:  'text',
   boolean: 'checkbox',
 };
+
+// Keys that should be rendered as password inputs
+const SECRET_KEYS = new Set(['smtp_pass']);
+
+// Keys that should use a wider input (long values)
+const WIDE_KEYS = new Set(['smtp_host', 'smtp_user', 'smtp_from', 'smtp_pass', 'google_client_id']);
 
 export default function AdminSettingsPage() {
   const [settings, setSettings] = useState<any[]>([]);
@@ -103,10 +110,12 @@ export default function AdminSettingsPage() {
                             </label>
                           ) : (
                             <input
-                              type={DATA_TYPE_INPUT[s.dataType] || 'text'}
+                              type={SECRET_KEYS.has(s.key) ? 'password' : (DATA_TYPE_INPUT[s.dataType] || 'text')}
                               value={edits[s.key] ?? s.value}
                               onChange={e => setEdits({...edits, [s.key]: e.target.value})}
-                              className="w-32 border border-gray-200 rounded-xl px-3 py-2 text-sm text-right font-bold focus:outline-none focus:ring-2 focus:ring-red-400"
+                              className={`border border-gray-200 rounded-xl px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-red-400 ${
+                                WIDE_KEYS.has(s.key) ? 'w-72 text-left' : 'w-32 text-right font-bold'
+                              }`}
                             />
                           )}
                         </div>

@@ -246,11 +246,20 @@ export default function Header() {
                 {item.label}
               </Link>
             ))}
-            <Link href="/partner/onboard"
+            <button
+              onClick={() => {
+                if (!user) {
+                  router.push('/auth/login?step=signup&role=vendor&redirect=%2Fpartner%2Fonboard');
+                } else if (user.role === 'vendor') {
+                  router.push('/partner/dashboard');
+                } else {
+                  router.push('/auth/login?role=vendor&redirect=%2Fpartner%2Fonboard');
+                }
+              }}
               className="flex items-center gap-1.5 text-sm font-bold px-3 py-2 rounded-full text-red-600 border border-red-200 hover:bg-red-50 transition-all">
               <PlusIcon className="w-3.5 h-3.5" />
               List Business
-            </Link>
+            </button>
           </nav>
 
           {/* Auth */}
@@ -298,19 +307,21 @@ export default function Header() {
               </div>
             ) : (
               <>
-                {/* Desktop: text link → full login page */}
-                <Link href="/auth/login"
+                {/* Desktop: Login → navigate to /auth/login page */}
+                <button
+                  onClick={() => router.push(`/auth/login?redirect=${encodeURIComponent(pathname)}`)}
                   className="hidden sm:block text-sm font-semibold px-3 py-2 rounded-full text-gray-700 hover:text-red-600 transition">
                   Login
-                </Link>
-                {/* Desktop: Register pill → full login page */}
-                <Link href="/auth/login"
+                </button>
+                {/* Desktop: Register → navigate to /auth/login with signup step */}
+                <button
+                  onClick={() => router.push(`/auth/login?step=signup&redirect=${encodeURIComponent(pathname)}`)}
                   className="hidden sm:flex items-center gap-1.5 bg-gradient-to-r from-red-600 to-rose-600 text-white text-sm font-bold px-4 py-2 rounded-full hover:from-red-700 hover:to-rose-700 transition shadow-md shadow-red-200 whitespace-nowrap">
                   Register
-                </Link>
-                {/* Mobile only: Login pill → opens bottom sheet */}
+                </button>
+                {/* Mobile: Login pill → opens AuthBottomSheet */}
                 <button
-                  onClick={openAuthModal}
+                  onClick={() => openAuthModal({ initialStep: 'signin' })}
                   className="sm:hidden bg-gradient-to-r from-red-600 to-rose-600 text-white text-sm font-bold px-3 py-2 rounded-full hover:from-red-700 hover:to-rose-700 active:scale-95 transition shadow-md shadow-red-200 whitespace-nowrap flex items-center gap-1.5">
                   <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
@@ -385,10 +396,9 @@ export default function Header() {
             {/* Nav links */}
             <div className="px-4 space-y-1">
               {[
-                { href: '/search',                  label: 'Find Vendors',      Icon: SearchIcon },
-                { href: '/plan',                    label: 'Plan My Event',     Icon: ClipboardIcon },
-                { href: '/wedding-planners-in-delhi', label: 'Wedding Vendors',   Icon: WeddingIcon },
-                { href: '/partner/onboard',         label: 'List Your Business',Icon: StoreIcon },
+                { href: '/search',                    label: 'Find Vendors',    Icon: SearchIcon },
+                { href: '/plan',                      label: 'Plan My Event',   Icon: ClipboardIcon },
+                { href: '/wedding-planners-in-delhi', label: 'Wedding Vendors', Icon: WeddingIcon },
               ].map((item) => (
                 <Link
                   key={item.href}
@@ -402,6 +412,25 @@ export default function Header() {
                   {item.label}
                 </Link>
               ))}
+              {/* List Business — guards non-logged-in users */}
+              <button
+                onClick={() => {
+                  setMobileOpen(false);
+                  if (!user) {
+                    openAuthModal({ defaultRole: 'vendor', initialStep: 'signup', redirectTo: '/partner/onboard' });
+                  } else if (user.role === 'vendor') {
+                    router.push('/partner/dashboard');
+                  } else {
+                    openAuthModal({ defaultRole: 'vendor', redirectTo: '/partner/onboard' });
+                  }
+                }}
+                className="flex items-center gap-3 px-4 py-3.5 rounded-2xl text-red-700 hover:bg-red-50 active:bg-red-100 transition text-sm font-semibold w-full text-left"
+              >
+                <span className="w-9 h-9 bg-red-50 rounded-xl flex items-center justify-center shrink-0">
+                  <StoreIcon className="w-4 h-4 text-red-500" />
+                </span>
+                List Your Business
+              </button>
             </div>
 
             <div className="h-px bg-gray-100 mx-4 my-3" />
@@ -418,7 +447,7 @@ export default function Header() {
                     </svg>
                     Login / Register — Free
                   </button>
-                  <p className="text-center text-xs text-gray-400">No password needed · OTP login</p>
+                  <p className="text-center text-xs text-gray-400">Email · Google · OTP — 100% free</p>
                 </div>
               ) : (
                 <div className="flex items-center gap-3 bg-gray-50 rounded-2xl p-4">

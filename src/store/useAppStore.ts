@@ -8,47 +8,67 @@ export interface User {
   phone?: string;
   email?: string;
   role: 'user' | 'vendor' | 'admin' | 'super_admin';
-  vendorId?: number; // populated after vendor profile fetch
+  vendorId?: number;
+}
+
+export interface AuthModalIntent {
+  /** Where to navigate after successful auth */
+  redirectTo?:   string;
+  /** Pre-select this role in onboarding */
+  defaultRole?:  'user' | 'vendor';
+  /** Which tab to start on */
+  initialStep?:  'signin' | 'signup';
 }
 
 interface AppStore {
-  user: User | null;
-  token: string | null;
-  selectedCity: City | null;
-  selectedLocality: Locality | null;
-  authModalOpen: boolean;
-  setUser: (user: User | null) => void;
-  setToken: (token: string | null) => void;
-  setSelectedCity: (city: City | null) => void;
+  user:              User | null;
+  token:             string | null;
+  selectedCity:      City | null;
+  selectedLocality:  Locality | null;
+  authModalOpen:     boolean;
+  authModalIntent:   AuthModalIntent | null;
+  setUser:           (user: User | null) => void;
+  setToken:          (token: string | null) => void;
+  setSelectedCity:   (city: City | null) => void;
   setSelectedLocality: (locality: Locality | null) => void;
-  openAuthModal: () => void;
-  closeAuthModal: () => void;
-  logout: () => void;
+  openAuthModal:     (intent?: AuthModalIntent) => void;
+  closeAuthModal:    () => void;
+  logout:            () => void;
 }
 
 export const useAppStore = create<AppStore>()(
   persist(
     (set) => ({
-      user: null,
-      token: null,
-      selectedCity: null,
+      user:             null,
+      token:            null,
+      selectedCity:     null,
       selectedLocality: null,
-      authModalOpen: false,
-      setUser: (user) => set({ user }),
+      authModalOpen:    false,
+      authModalIntent:  null,
+
+      setUser:  (user)  => set({ user }),
       setToken: (token) => {
         set({ token });
         if (token) localStorage.setItem('token', token);
-        else localStorage.removeItem('token');
+        else        localStorage.removeItem('token');
       },
-      setSelectedCity: (city) => set({ selectedCity: city, selectedLocality: null }),
+      setSelectedCity:     (city)     => set({ selectedCity: city, selectedLocality: null }),
       setSelectedLocality: (locality) => set({ selectedLocality: locality }),
-      openAuthModal:  () => set({ authModalOpen: true }),
-      closeAuthModal: () => set({ authModalOpen: false }),
+
+      openAuthModal: (intent?: AuthModalIntent) =>
+        set({ authModalOpen: true, authModalIntent: intent ?? null }),
+
+      closeAuthModal: () =>
+        set({ authModalOpen: false, authModalIntent: null }),
+
       logout: () => {
         localStorage.removeItem('token');
         set({ user: null, token: null });
       },
     }),
-    { name: 'events-app', partialize: (s) => ({ user: s.user, token: s.token, selectedCity: s.selectedCity }) },
+    {
+      name: 'events-app',
+      partialize: (s) => ({ user: s.user, token: s.token, selectedCity: s.selectedCity }),
+    },
   ),
 );

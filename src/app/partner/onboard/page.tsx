@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { locationsApi, categoriesApi, vendorsApi } from '@/lib/api';
+import { locationsApi, categoriesApi, vendorsApi, vendorServicesApi } from '@/lib/api';
 import { City, Locality, Category } from '@/types';
 import { useAppStore } from '@/store/useAppStore';
 
@@ -75,6 +75,23 @@ export default function VendorOnboardPage() {
         yearsOfExperience: form.yearsOfExperience ? Number(form.yearsOfExperience) : undefined,
         teamSize: form.teamSize ? Number(form.teamSize) : undefined,
       });
+
+      // Auto-create one service record per selected category so they appear
+      // in the Services section of the dashboard immediately after onboarding
+      const selectedCats = categories.filter((c) => form.categoryIds.includes(c.id));
+      await Promise.allSettled(
+        selectedCats.map((cat) =>
+          vendorServicesApi.create({
+            title: cat.name,
+            description: form.description || undefined,
+            categoryId: cat.id,
+            priceUnit: form.priceUnit || undefined,
+            minPrice: form.minPrice ? Number(form.minPrice) : undefined,
+            maxPrice: form.maxPrice ? Number(form.maxPrice) : undefined,
+          })
+        )
+      );
+
       setStep(3);
     } catch (err: unknown) {
       const e = err as { message?: string };

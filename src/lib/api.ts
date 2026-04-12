@@ -256,17 +256,31 @@ export const vendorServicesApi = {
 
 // ─── Vendor Panel (JWT required) ──────────────────────────────────────────────
 export const vendorPanelApi = {
-  getDashboard:     () => api.get('/vendor/dashboard'),
-  getLeads:         (params?: { page?: number; status?: string; packageId?: number }) =>
+  getDashboard:         () => api.get('/vendor/dashboard'),
+  getLeads:             (params?: { page?: number; status?: string; packageId?: number; search?: string }) =>
     api.get('/vendor/leads', { params }),
-  getLeadStats:     () => api.get('/vendor/leads/stats'),
-  updateLeadStatus: (id: number, status: string) =>
-    api.patch(`/vendor/leads/${id}/status`, { status }),
-  unlockLead:       (id: number) => api.post(`/vendor/leads/${id}/unlock`),
-  getProfile:       () => api.get('/vendor/profile'),
-  updateProfile:    (data: unknown) => api.patch('/vendor/profile', data),
-  getWallet:        () => api.get('/vendor/wallet'),
-  getTransactions:  (page = 1) => api.get('/vendor/wallet/transactions', { params: { page } }),
+  getLeadStats:         () => api.get('/vendor/leads/stats'),
+  updateLeadStatus:     (id: number, status: string, notes?: string) =>
+    api.patch(`/vendor/leads/${id}/status`, { status, notes }),
+  unlockLead:           (id: number) => api.post(`/vendor/leads/${id}/unlock`),
+  getLeadHistory:       (id: number) => api.get(`/vendor/leads/${id}/history`),
+  getProfile:           () => api.get('/vendor/profile'),
+  updateProfile:        (data: unknown) => api.patch('/vendor/profile', data),
+  getWallet:            () => api.get('/vendor/wallet'),
+  getTransactions:      (page = 1) => api.get('/vendor/wallet/transactions', { params: { page } }),
+  getSubscription:      () => api.get('/vendor/subscription'),
+  getNotifications:     (page = 1) => api.get('/vendor/notifications', { params: { page } }),
+  markNotifRead:        (id: number) => api.patch(`/vendor/notifications/${id}/read`),
+  markAllNotifsRead:    () => api.patch('/vendor/notifications/read-all'),
+};
+
+// ─── Subscriptions ────────────────────────────────────────────────────────────
+export const subscriptionsApi = {
+  getMy:     () => api.get('/subscriptions/my'),
+  initiate:  (billingCycle: 'monthly' | 'yearly') => api.post('/subscriptions/initiate', { billingCycle }),
+  activate:  (data: { vendorId: number; billingCycle: string; paymentId: string; amount: number }) =>
+    api.post('/subscriptions/activate', data),
+  getHistory: () => api.get('/subscriptions/history'),
 };
 
 // ─── SEO (Public) ─────────────────────────────────────────────────────────────

@@ -1,14 +1,13 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { useAppStore } from '@/store/useAppStore';
-import VendorDashboardShell from '@/components/vendor-dashboard/VendorDashboardShell';
+import UserDashboardShell from '@/components/user-dashboard/UserDashboardShell';
 
-export default function VendorDashboardPage() {
+export default function UserDashboardPage() {
   const { user } = useAppStore();
   const router = useRouter();
-  const searchParams = useSearchParams();
   const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => { setHydrated(true); }, []);
@@ -16,7 +15,7 @@ export default function VendorDashboardPage() {
   useEffect(() => {
     if (!hydrated) return;
     if (!user) {
-      router.replace('/auth/login?redirect=%2Fvendor%2Fdashboard');
+      router.replace('/auth/login?redirect=%2Fuser%2Fdashboard');
     }
   }, [hydrated, user, router]);
 
@@ -31,6 +30,5 @@ export default function VendorDashboardPage() {
     );
   }
 
-  const initialSection = (searchParams.get('section') as any) || 'dashboard';
-  return <VendorDashboardShell initialSection={initialSection} />;
+  return <UserDashboardShell />;
 }

@@ -8,6 +8,7 @@ import PlanWizard from '@/components/home/PlanWizard';
 import FeaturedPackages from '@/components/home/FeaturedPackages';
 import CityRedirect from '@/components/home/CityRedirect';
 import { StoreIcon, CalendarIcon, StarIcon, CheckCircleIcon, ClipboardIcon, RobotIcon } from '@/components/ui/Icon';
+import RecommendedSection from '@/components/recommendations/RecommendedSection';
 
 export const metadata: Metadata = {
   title: 'PlanToday — Plan Your Event in 2 Minutes | AI-Powered Vendor Matching',
@@ -133,6 +134,9 @@ export default function HomePage() {
           </div>
         </div>
       </section>
+
+      {/* ── PERSONALIZED RECOMMENDATIONS (for logged-in users) ───────── */}
+      <RecommendedSection />
 
       {/* ── FEATURED PACKAGES ────────────────────────────────────────── */}
       <FeaturedPackages />

@@ -9,6 +9,19 @@ export interface User {
   email?: string;
   role: 'user' | 'vendor' | 'admin' | 'super_admin';
   vendorId?: number;
+  onboardingComplete?: boolean;
+}
+
+export interface UserPreferences {
+  eventType?: string;
+  budgetMin?: number;
+  budgetMax?: number;
+  cityId?: number;
+  guestCount?: number;
+  eventDate?: string;
+  isFlexibleDate?: boolean;
+  services?: string[];
+  priceType?: string;
 }
 
 export interface AuthModalIntent {
@@ -23,12 +36,14 @@ export interface AuthModalIntent {
 interface AppStore {
   user:              User | null;
   token:             string | null;
+  preferences:       UserPreferences | null;
   selectedCity:      City | null;
   selectedLocality:  Locality | null;
   authModalOpen:     boolean;
   authModalIntent:   AuthModalIntent | null;
   setUser:           (user: User | null) => void;
   setToken:          (token: string | null) => void;
+  setPreferences:    (prefs: UserPreferences | null) => void;
   setSelectedCity:   (city: City | null) => void;
   setSelectedLocality: (locality: Locality | null) => void;
   openAuthModal:     (intent?: AuthModalIntent) => void;
@@ -41,13 +56,15 @@ export const useAppStore = create<AppStore>()(
     (set) => ({
       user:             null,
       token:            null,
+      preferences:      null,
       selectedCity:     null,
       selectedLocality: null,
       authModalOpen:    false,
       authModalIntent:  null,
 
-      setUser:  (user)  => set({ user }),
-      setToken: (token) => {
+      setUser:        (user)  => set({ user }),
+      setPreferences: (preferences) => set({ preferences }),
+      setToken:       (token) => {
         set({ token });
         if (token) localStorage.setItem('token', token);
         else        localStorage.removeItem('token');
@@ -63,12 +80,17 @@ export const useAppStore = create<AppStore>()(
 
       logout: () => {
         localStorage.removeItem('token');
-        set({ user: null, token: null });
+        set({ user: null, token: null, preferences: null });
       },
     }),
     {
       name: 'events-app',
-      partialize: (s) => ({ user: s.user, token: s.token, selectedCity: s.selectedCity }),
+      partialize: (s) => ({
+        user: s.user,
+        token: s.token,
+        selectedCity: s.selectedCity,
+        preferences: s.preferences,
+      }),
     },
   ),
 );

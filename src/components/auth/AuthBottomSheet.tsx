@@ -207,9 +207,14 @@ export default function AuthBottomSheet({
 
   function finish(user: User) {
     onClose();
+    // Force onboarding if not complete (non-admin users)
+    if (user.onboardingComplete === false && user.role !== 'admin' && user.role !== 'super_admin') {
+      router.push('/onboarding');
+      return;
+    }
     const dest = intent?.redirectTo;
     if (dest) { router.push(dest); return; }
-    if (user.role === 'vendor')                                    router.push('/partner/dashboard');
+    if (user.role === 'vendor')                                    router.push('/vendor/dashboard');
     else if (user.role === 'admin' || user.role === 'super_admin') router.push('/admin');
     // else stay on page
   }

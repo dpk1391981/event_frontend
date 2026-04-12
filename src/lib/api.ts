@@ -88,6 +88,8 @@ export const vendorsApi = {
   create: (data: unknown) => api.post('/vendors', data),
   update: (id: number, data: unknown) => api.patch(`/vendors/${id}`, data),
   getMyProfile: () => api.get('/vendors/my'),
+  search: (q: string, cityId?: number) =>
+    api.get('/search', { params: { q, cityId, limit: 10 } }),
 };
 
 // ─── Locations ────────────────────────────────────────────────────────────────
@@ -281,6 +283,42 @@ export const subscriptionsApi = {
   activate:  (data: { vendorId: number; billingCycle: string; paymentId: string; amount: number }) =>
     api.post('/subscriptions/activate', data),
   getHistory: () => api.get('/subscriptions/history'),
+};
+
+// ─── Onboarding ───────────────────────────────────────────────────────────────
+export const onboardingApi = {
+  getStatus:          () => api.get('/onboarding/status'),
+  completeUser:       (data: unknown) => api.post('/onboarding/user', data),
+  completeVendor:     (data: unknown) => api.post('/onboarding/vendor', data),
+  createFirstPackage: (data: unknown) => api.post('/onboarding/vendor/first-package', data),
+  skipFirstPackage:   () => api.post('/onboarding/vendor/skip-package'),
+};
+
+// ─── Activity Tracking ────────────────────────────────────────────────────────
+export const activityApi = {
+  track:          (data: unknown) => api.post('/activity/track', data),
+  trackBatch:     (events: unknown[]) => api.post('/activity/batch', { events }),
+  getMyActivity:  () => api.get('/activity/my'),
+  getIntentScore: () => api.get('/activity/intent-score'),
+  getBestDealCta: () => api.get('/activity/best-deal-cta'),
+};
+
+// ─── Recommendations ──────────────────────────────────────────────────────────
+export const recommendationsApi = {
+  getVendors:    (limit = 8) => api.get('/recommendations/vendors', { params: { limit } }),
+  getPackages:   (limit = 8) => api.get('/recommendations/packages', { params: { limit } }),
+  getSmartLead:  () => api.get('/recommendations/smart-lead'),
+  getCategories: () => api.get('/recommendations/categories'),
+};
+
+// ─── Feedback / Complaints ────────────────────────────────────────────────────
+export const feedbackApi = {
+  submit:       (data: unknown) => api.post('/feedback', data),
+  // Admin
+  list:         (params: Record<string, unknown>) => api.get('/feedback/admin', { params }),
+  getStats:     () => api.get('/feedback/admin/stats'),
+  getOne:       (id: number) => api.get(`/feedback/admin/${id}`),
+  update:       (id: number, data: unknown) => api.patch(`/feedback/admin/${id}`, data),
 };
 
 // ─── SEO (Public) ─────────────────────────────────────────────────────────────

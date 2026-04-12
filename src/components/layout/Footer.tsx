@@ -131,6 +131,7 @@ export default function Footer() {
         <div className="flex flex-col items-center justify-between gap-4 border-t border-gray-800 pt-6 text-xs text-gray-600 sm:flex-row">
           <p>© {new Date().getFullYear()} PlanToday. All rights reserved.</p>
           <div className="flex gap-4">
+            <Link href="/about" className="transition hover:text-gray-400">About Us</Link>
             <Link href="/privacy" className="transition hover:text-gray-400">Privacy Policy</Link>
             <Link href="/terms" className="transition hover:text-gray-400">Terms of Service</Link>
             <Link href="/sitemap.xml" className="transition hover:text-gray-400">Sitemap</Link>

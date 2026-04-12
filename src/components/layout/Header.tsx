@@ -246,20 +246,26 @@ export default function Header() {
                 {item.label}
               </Link>
             ))}
-            <button
-              onClick={() => {
-                if (!user) {
-                  router.push('/auth/login?step=signup&role=vendor&redirect=%2Fpartner%2Fonboard');
-                } else if (user.role === 'vendor') {
-                  router.push('/partner/dashboard');
-                } else {
-                  router.push('/auth/login?role=vendor&redirect=%2Fpartner%2Fonboard');
-                }
-              }}
-              className="flex items-center gap-1.5 text-sm font-bold px-3 py-2 rounded-full text-red-600 border border-red-200 hover:bg-red-50 transition-all">
-              <PlusIcon className="w-3.5 h-3.5" />
-              List Business
-            </button>
+            {user?.role === 'vendor' ? (
+              <Link href="/vendor/dashboard"
+                className="flex items-center gap-1.5 text-sm font-bold px-3 py-2 rounded-full text-red-600 border border-red-200 hover:bg-red-50 transition-all">
+                <StoreIcon className="w-3.5 h-3.5" />
+                Dashboard
+              </Link>
+            ) : user?.role === 'user' ? (
+              <Link href="/user/dashboard"
+                className="flex items-center gap-1.5 text-sm font-bold px-3 py-2 rounded-full text-red-600 border border-red-200 hover:bg-red-50 transition-all">
+                <CalendarIcon className="w-3.5 h-3.5" />
+                My Dashboard
+              </Link>
+            ) : (
+              <button
+                onClick={() => router.push('/auth/login?step=signup&role=vendor&redirect=%2Fonboarding')}
+                className="flex items-center gap-1.5 text-sm font-bold px-3 py-2 rounded-full text-red-600 border border-red-200 hover:bg-red-50 transition-all">
+                <PlusIcon className="w-3.5 h-3.5" />
+                List Business
+              </button>
+            )}
           </nav>
 
           {/* Auth */}
@@ -283,10 +289,16 @@ export default function Header() {
                         <p className="text-sm font-bold text-gray-900">{user.name}</p>
                         <p className="text-xs text-gray-400 capitalize">{user.role}</p>
                       </div>
+                      {user.role === 'user' && (
+                        <Link href="/user/dashboard" onClick={() => setUserMenuOpen(false)}
+                          className="flex items-center gap-2 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50">
+                          <CalendarIcon className="w-4 h-4 text-gray-400" /> My Dashboard
+                        </Link>
+                      )}
                       {user.role === 'vendor' && (
                         <Link href="/vendor/dashboard" onClick={() => setUserMenuOpen(false)}
                           className="flex items-center gap-2 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50">
-                          <StoreIcon className="w-4 h-4 text-gray-400" /> Dashboard
+                          <StoreIcon className="w-4 h-4 text-gray-400" /> Vendor Dashboard
                         </Link>
                       )}
                       {(user.role === 'admin' || user.role === 'super_admin') && (
@@ -412,25 +424,39 @@ export default function Header() {
                   {item.label}
                 </Link>
               ))}
-              {/* List Business — guards non-logged-in users */}
-              <button
-                onClick={() => {
-                  setMobileOpen(false);
-                  if (!user) {
-                    openAuthModal({ defaultRole: 'vendor', initialStep: 'signup', redirectTo: '/partner/onboard' });
-                  } else if (user.role === 'vendor') {
-                    router.push('/partner/dashboard');
-                  } else {
-                    openAuthModal({ defaultRole: 'vendor', redirectTo: '/partner/onboard' });
-                  }
-                }}
-                className="flex items-center gap-3 px-4 py-3.5 rounded-2xl text-red-700 hover:bg-red-50 active:bg-red-100 transition text-sm font-semibold w-full text-left"
-              >
-                <span className="w-9 h-9 bg-red-50 rounded-xl flex items-center justify-center shrink-0">
-                  <StoreIcon className="w-4 h-4 text-red-500" />
-                </span>
-                List Your Business
-              </button>
+              {/* Dashboard / List Business — context-aware */}
+              {user?.role === 'vendor' ? (
+                <Link href="/vendor/dashboard" onClick={() => setMobileOpen(false)}
+                  className="flex items-center gap-3 px-4 py-3.5 rounded-2xl text-red-700 hover:bg-red-50 active:bg-red-100 transition text-sm font-semibold"
+                >
+                  <span className="w-9 h-9 bg-red-50 rounded-xl flex items-center justify-center shrink-0">
+                    <StoreIcon className="w-4 h-4 text-red-500" />
+                  </span>
+                  Vendor Dashboard
+                </Link>
+              ) : user?.role === 'user' ? (
+                <Link href="/user/dashboard" onClick={() => setMobileOpen(false)}
+                  className="flex items-center gap-3 px-4 py-3.5 rounded-2xl text-red-700 hover:bg-red-50 active:bg-red-100 transition text-sm font-semibold"
+                >
+                  <span className="w-9 h-9 bg-red-50 rounded-xl flex items-center justify-center shrink-0">
+                    <CalendarIcon className="w-4 h-4 text-red-500" />
+                  </span>
+                  My Dashboard
+                </Link>
+              ) : (
+                <button
+                  onClick={() => {
+                    setMobileOpen(false);
+                    openAuthModal({ defaultRole: 'vendor', initialStep: 'signup', redirectTo: '/onboarding' });
+                  }}
+                  className="flex items-center gap-3 px-4 py-3.5 rounded-2xl text-red-700 hover:bg-red-50 active:bg-red-100 transition text-sm font-semibold w-full text-left"
+                >
+                  <span className="w-9 h-9 bg-red-50 rounded-xl flex items-center justify-center shrink-0">
+                    <StoreIcon className="w-4 h-4 text-red-500" />
+                  </span>
+                  List Your Business
+                </button>
+              )}
             </div>
 
             <div className="h-px bg-gray-100 mx-4 my-3" />

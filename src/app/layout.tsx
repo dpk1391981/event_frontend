@@ -7,6 +7,7 @@ import LaunchGate from '@/components/launch/LaunchGate';
 import GlobalLeadCTA from '@/components/lead/GlobalLeadCTA';
 import CookieConsent from '@/components/common/CookieConsent';
 import AuthBottomSheet from '@/components/auth/AuthBottomSheet';
+import OnboardingGate from '@/components/onboarding/OnboardingGate';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -81,6 +82,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <Footer />
           <GlobalLeadCTA />
           <AuthBottomSheet />
+          <OnboardingGate />
           <CookieConsent />
         </LaunchGate>
       </body>

@@ -33,7 +33,9 @@ import {
 } from '@/lib/vendor-panel';
 import { useAppStore } from '@/store/useAppStore';
 import { useRouter } from 'next/navigation';
-import { locationsApi, availabilityApi, vendorPanelApi } from '@/lib/api';
+import { locationsApi, availabilityApi, vendorPanelApi, vendorServicesApi, packagesApi } from '@/lib/api';
+import ServiceCreateForm, { type ServiceEditData } from '@/components/partner/ServiceCreateForm';
+import PackageCreateForm, { type PackageEditData } from '@/components/partner/PackageCreateForm';
 
 const displayFont = Space_Grotesk({ subsets: ['latin'] });
 
@@ -109,13 +111,13 @@ export default function MyPanelShell({ data }: { data: VendorPanelData }) {
   };
 
   // ── Package actions ──
-  const addPackage = async (payload: {
-    title: string; categoryId?: number; price: number; priceType: 'fixed' | 'per_person';
-    description?: string; serviceIds?: number[]; tag?: string; minGuests?: number; maxGuests?: number;
-    cityId?: number; localityIds?: number[];
-  }) => {
-    const created = await apiCreatePackage({ ...payload, status: 'active' } as any) as unknown as PackageItem;
-    setPackages((cur) => [...cur, { ...created, serviceIds: created.serviceIds ?? payload.serviceIds ?? [] }]);
+  const addPackage = async (payload: unknown) => {
+    const created = payload as PackageItem;
+    setPackages((cur) => [...cur, { ...created, serviceIds: (created as any).serviceIds ?? [] }]);
+  };
+  const updatePackageInList = (updated: unknown) => {
+    const pkg = updated as PackageItem;
+    setPackages((cur) => cur.map((p) => p.id === pkg.id ? { ...p, ...pkg } : p));
   };
 
   const togglePackageStatus = (id: number) => {
@@ -141,11 +143,12 @@ export default function MyPanelShell({ data }: { data: VendorPanelData }) {
   };
 
   // ── Service actions ──
-  const addService = async (svcData: Omit<VendorServiceItem, 'id' | 'vendorId' | 'createdAt' | 'sortOrder'>) => {
-    try {
-      const created = await apiCreateService(svcData) as unknown as VendorServiceItem;
-      setServices((cur) => [...cur, created]);
-    } catch { /* silent */ }
+  const addService = (svcData: unknown) => {
+    setServices((cur) => [...cur, svcData as VendorServiceItem]);
+  };
+  const updateServiceInList = (updated: unknown) => {
+    const svc = updated as VendorServiceItem;
+    setServices((cur) => cur.map((s) => s.id === svc.id ? { ...s, ...svc } : s));
   };
   const toggleServiceStatus = (id: number) => {
     const svc = services.find((s) => s.id === id);
@@ -367,7 +370,9 @@ export default function MyPanelShell({ data }: { data: VendorPanelData }) {
               <ServicesSection
                 services={services}
                 categories={data.serviceCategories}
+                cities={data.cities}
                 onAdd={addService}
+                onUpdate={updateServiceInList}
                 onToggleStatus={toggleServiceStatus}
                 onRemove={removeService}
               />
@@ -379,6 +384,7 @@ export default function MyPanelShell({ data }: { data: VendorPanelData }) {
                 cities={data.cities}
                 serviceCategories={data.serviceCategories}
                 onSave={addPackage}
+                onUpdate={updatePackageInList}
                 onToggleStatus={togglePackageStatus}
                 onToggleBoost={togglePackageBoost}
                 onToggleFeatured={togglePackageFeatured}
@@ -693,143 +699,331 @@ function LeadMeta({ label, value }: { label: string; value: string }) {
 
 // ─── Services ─────────────────────────────────────────────────────────────────
 
+function StatusBadge({ status }: { status: string }) {
+  const cfg: Record<string, { cls: string; dot: string; label: string }> = {
+    active:   { cls: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30', dot: 'bg-emerald-400', label: 'Active' },
+    pending:  { cls: 'bg-amber-500/15   text-amber-400   border-amber-500/30',   dot: 'bg-amber-400',   label: 'Pending' },
+    draft:    { cls: 'bg-gray-800       text-gray-400    border-gray-700',        dot: 'bg-gray-500',    label: 'Draft' },
+    inactive: { cls: 'bg-gray-800       text-gray-500    border-gray-700',        dot: 'bg-gray-600',    label: 'Inactive' },
+    rejected: { cls: 'bg-red-500/15     text-red-400     border-red-500/30',      dot: 'bg-red-400',     label: 'Rejected' },
+  };
+  const c = cfg[status] ?? cfg.draft;
+  return (
+    <span className={`inline-flex items-center gap-1.5 shrink-0 rounded-full px-2.5 py-1 text-[10px] font-bold border ${c.cls}`}>
+      <span className={`w-1.5 h-1.5 rounded-full ${c.dot} animate-pulse`} />
+      {c.label}
+    </span>
+  );
+}
+
+function PriceTag({ tag }: { tag?: string }) {
+  const cfg: Record<string, string> = {
+    budget:    'text-sky-400    border-sky-500/30    bg-sky-500/10',
+    standard:  'text-gray-300   border-gray-600      bg-gray-800',
+    premium:   'text-purple-400 border-purple-500/30 bg-purple-500/10',
+    luxury:    'text-amber-400  border-amber-500/30  bg-amber-500/10',
+    mid_range: 'text-blue-400   border-blue-500/30   bg-blue-500/10',
+  };
+  if (!tag) return null;
+  const label = tag.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+  return (
+    <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border capitalize ${cfg[tag] ?? cfg.standard}`}>
+      <Gem className="h-2.5 w-2.5" />
+      {label}
+    </span>
+  );
+}
+
 function ServicesSection({
-  services, categories, onAdd, onToggleStatus, onRemove,
+  services, categories, cities, onAdd, onUpdate, onToggleStatus, onRemove,
 }: {
   services: VendorServiceItem[];
   categories: Array<{ id: number; name: string }> | string[];
-  onAdd: (d: Omit<VendorServiceItem, 'id' | 'vendorId' | 'createdAt' | 'sortOrder'>) => Promise<void>;
+  cities: Array<{ id: number; name: string }>;
+  onAdd: (d: unknown) => void;
+  onUpdate: (d: unknown) => void;
   onToggleStatus: (id: number) => void;
   onRemove: (id: number) => void;
 }) {
-  // Normalise to string[] for the DarkSelect inside
-  const categoryNames: string[] = categories.map((c) => typeof c === 'string' ? c : c.name);
   const [showForm, setShowForm] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState({
-    title: '', description: '', categoryName: '',
-    priceUnit: 'per event', minPrice: '', maxPrice: '',
-    duration: '', highlightsText: '', status: 'active' as 'active' | 'inactive',
-  });
+  const [editService, setEditService] = useState<ServiceEditData | undefined>(undefined);
+  const normCategories = categories.map((c) => typeof c === 'string' ? { id: 0, name: c } : c);
 
-  const handleSave = async () => {
-    if (!form.title.trim()) return;
-    setSaving(true);
-    await onAdd({
-      title: form.title, description: form.description,
-      categoryName: form.categoryName || undefined,
-      priceUnit: form.priceUnit || undefined,
-      minPrice: form.minPrice ? Number(form.minPrice) : undefined,
-      maxPrice: form.maxPrice ? Number(form.maxPrice) : undefined,
-      duration: form.duration || undefined,
-      highlights: form.highlightsText.split('\n').map((h) => h.trim()).filter(Boolean),
-      status: form.status,
+  const handleCreated = (svc: unknown) => { onAdd(svc); setShowForm(false); setEditService(undefined); };
+  const handleUpdated = (svc: unknown) => { onUpdate(svc); setShowForm(false); setEditService(undefined); };
+
+  const handleEdit = (svc: VendorServiceItem) => {
+    setEditService({
+      id:                  svc.id,
+      name:                (svc as any).name ?? svc.title,
+      title:               svc.title,
+      categoryId:          svc.categoryId,
+      eventTypes:          (svc as any).eventTypes,
+      shortDescription:    (svc as any).shortDescription,
+      detailedDescription: (svc as any).detailedDescription,
+      priceType:           (svc as any).priceType,
+      basePrice:           (svc as any).basePrice ?? svc.minPrice,
+      minPrice:            svc.minPrice,
+      maxPrice:            svc.maxPrice,
+      cityId:              (svc as any).cityId,
+      locality:            (svc as any).locality,
+      serviceAreas:        (svc as any).serviceAreas,
+      minGuests:           (svc as any).minGuests,
+      maxGuests:           (svc as any).maxGuests,
+      availabilityType:    (svc as any).availabilityType,
+      availableDates:      (svc as any).availableDates,
+      blockedDates:        (svc as any).blockedDates,
+      images:              (svc as any).images ?? (svc as any).resolvedImages,
+      videos:              (svc as any).videos,
+      tags:                (svc as any).tags,
+      highlights:          (svc as any).highlights,
     });
-    setSaving(false);
-    setForm({ title: '', description: '', categoryName: '', priceUnit: 'per event', minPrice: '', maxPrice: '', duration: '', highlightsText: '', status: 'active' });
-    setShowForm(false);
+    setShowForm(true);
   };
 
+  const handleSubmitForReview = async (id: number) => {
+    try { await vendorServicesApi.submit(id); } catch { /* noop */ }
+  };
+
+  const active = services.filter((s) => (s as any).status === 'active').length;
+  const pending = services.filter((s) => (s as any).status === 'pending').length;
+
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <SectionHeader eyebrow="Services" title="Your Service Offerings" />
+    <div className="space-y-5">
+      {/* Header row */}
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-red-500 mb-0.5">Services</p>
+          <h2 className="text-xl font-bold text-white">Your Service Offerings</h2>
+          <p className="text-xs text-gray-500 mt-0.5">
+            {services.length === 0 ? 'No services yet' : `${active} active · ${pending} pending · ${services.length} total`}
+          </p>
+        </div>
         <button
           type="button"
-          onClick={() => setShowForm((v) => !v)}
-          className="flex items-center gap-2 rounded-xl bg-red-600 px-4 py-2 text-sm font-bold text-white hover:bg-red-500 transition-all"
+          onClick={() => { setEditService(undefined); setShowForm(true); }}
+          className="shrink-0 flex items-center gap-2 rounded-xl bg-red-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-red-500 active:scale-95 transition-all shadow-lg shadow-red-600/20"
         >
           <Plus className="h-4 w-4" />
-          {showForm ? 'Cancel' : 'Add Service'}
+          Add Service
         </button>
       </div>
 
-      {/* Add form */}
-      {showForm && (
-        <div className="rounded-xl border border-red-500/30 bg-red-500/5 p-5">
-          <p className="text-base font-bold text-white mb-4">New Service</p>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <DarkField label="Title *" placeholder="e.g. Wedding Photography Full Day" value={form.title} onChange={(v) => setForm((f) => ({ ...f, title: v }))} />
-            <DarkSelect label="Category" value={form.categoryName} onChange={(v) => setForm((f) => ({ ...f, categoryName: v }))} options={categoryNames} placeholder="Select category" />
-            <DarkField label="Min Price (₹)" placeholder="50000" value={form.minPrice} onChange={(v) => setForm((f) => ({ ...f, minPrice: v }))} />
-            <DarkField label="Max Price (₹)" placeholder="200000" value={form.maxPrice} onChange={(v) => setForm((f) => ({ ...f, maxPrice: v }))} />
-            <DarkField label="Price Unit" placeholder="per event / per hour" value={form.priceUnit} onChange={(v) => setForm((f) => ({ ...f, priceUnit: v }))} />
-            <DarkField label="Duration" placeholder="Full Day / 6 hours" value={form.duration} onChange={(v) => setForm((f) => ({ ...f, duration: v }))} />
-            <div className="sm:col-span-2">
-              <DarkField label="Description" placeholder="What makes this service unique..." value={form.description} onChange={(v) => setForm((f) => ({ ...f, description: v }))} multiline />
-            </div>
-            <div className="sm:col-span-2">
-              <DarkField label="Highlights (one per line)" placeholder={"2 photographers\nDrone coverage\nSame-week delivery"} value={form.highlightsText} onChange={(v) => setForm((f) => ({ ...f, highlightsText: v }))} multiline />
-            </div>
+      {/* Status legend strip */}
+      <div className="flex flex-wrap gap-3 text-[11px] text-gray-500">
+        {[
+          { dot: 'bg-emerald-400', label: 'Active — visible in search' },
+          { dot: 'bg-amber-400',   label: 'Pending — under review' },
+          { dot: 'bg-gray-500',    label: 'Draft — submit when ready' },
+          { dot: 'bg-red-400',     label: 'Rejected — see reason' },
+        ].map(({ dot, label }) => (
+          <span key={label} className="flex items-center gap-1.5">
+            <span className={`w-1.5 h-1.5 rounded-full ${dot}`} />
+            {label}
+          </span>
+        ))}
+      </div>
+
+      {services.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-gray-700 bg-gray-900/40 py-16 flex flex-col items-center gap-4 text-center">
+          <div className="w-14 h-14 rounded-2xl bg-gray-800 border border-gray-700 flex items-center justify-center">
+            <BriefcaseBusiness className="h-6 w-6 text-gray-500" />
+          </div>
+          <div>
+            <p className="text-sm font-bold text-white">No services yet</p>
+            <p className="text-xs text-gray-500 mt-1 max-w-xs">Create your first service to appear in search results and AI event plans.</p>
           </div>
           <button
             type="button"
-            onClick={handleSave}
-            disabled={saving || !form.title.trim()}
-            className="mt-4 flex items-center gap-2 rounded-xl bg-red-600 px-5 py-2.5 text-sm font-bold text-white hover:bg-red-500 disabled:opacity-50 transition-all"
+            onClick={() => { setEditService(undefined); setShowForm(true); }}
+            className="flex items-center gap-2 rounded-xl bg-red-600 px-5 py-2.5 text-sm font-bold text-white hover:bg-red-500 transition-all"
           >
-            {saving ? 'Saving…' : 'Save Service'}
+            <Plus className="h-4 w-4" />
+            Create First Service
           </button>
+        </div>
+      ) : (
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {services.map((svc) => {
+            const status = (svc as any).status ?? 'draft';
+            const basePrice = (svc as any).basePrice ?? svc.minPrice;
+            const maxPrice = svc.maxPrice;
+            const priceType = (svc as any).priceType;
+            const priceRangeTag = (svc as any).priceRangeTag;
+            const images: string[] = (svc as any).resolvedImages ?? (svc as any).images ?? [];
+            const rejectionReason: string = (svc as any).rejectionReason ?? '';
+            const title = (svc as any).name ?? svc.title ?? 'Untitled Service';
+            const city = (svc as any).city?.name ?? (svc as any).cityName ?? '';
+            const eventTypes: string[] = (svc as any).eventTypes ?? [];
+            const rating = (svc as any).rating ?? 0;
+            const totalBookings = (svc as any).totalBookings ?? 0;
+            const tags: string[] = (svc as any).tags ?? [];
+
+            return (
+              <div
+                key={svc.id}
+                className={`group rounded-2xl border overflow-hidden flex flex-col transition-all hover:shadow-xl hover:-translate-y-0.5 ${
+                  status === 'active'   ? 'border-gray-700/80 bg-gray-900 hover:border-gray-600 hover:shadow-black/40' :
+                  status === 'pending'  ? 'border-amber-500/25 bg-gray-900 hover:border-amber-500/40' :
+                  status === 'rejected' ? 'border-red-500/25 bg-gray-900 hover:border-red-500/40' :
+                  'border-gray-800 bg-gray-900/60'
+                }`}
+              >
+                {/* Cover image / placeholder */}
+                <div className="relative h-44 overflow-hidden bg-gradient-to-br from-gray-800 to-gray-850 shrink-0">
+                  {images.length > 0 ? (
+                    <img src={images[0]} alt={title} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center">
+                      <BriefcaseBusiness className="h-10 w-10 text-gray-700" />
+                    </div>
+                  )}
+                  {/* Image count badge */}
+                  {images.length > 1 && (
+                    <span className="absolute bottom-2 right-2 bg-black/60 backdrop-blur-sm text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
+                      +{images.length - 1} photos
+                    </span>
+                  )}
+                  {/* Status badge — top-right overlay */}
+                  <div className="absolute top-3 right-3">
+                    <StatusBadge status={status} />
+                  </div>
+                  {/* Price tag overlay bottom-left */}
+                  {basePrice > 0 && (
+                    <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent px-3 pb-2 pt-6">
+                      <p className="text-base font-bold text-white leading-tight">
+                        {fmtPrice(Number(basePrice))}
+                        {maxPrice && maxPrice > basePrice && (
+                          <span className="text-gray-300 font-normal text-xs"> – {fmtPrice(Number(maxPrice))}</span>
+                        )}
+                        {priceType && (
+                          <span className="ml-1 text-[11px] font-normal text-gray-400">/{priceType.replace(/_/g, ' ')}</span>
+                        )}
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Card body */}
+                <div className="p-4 flex-1 flex flex-col gap-3">
+                  {/* Title + tags row */}
+                  <div>
+                    <h3 className="text-sm font-bold text-white leading-snug line-clamp-1">{title}</h3>
+                    <div className="mt-1.5 flex flex-wrap gap-1.5">
+                      {priceRangeTag && <PriceTag tag={priceRangeTag} />}
+                      {eventTypes.slice(0, 2).map((et) => (
+                        <span key={et} className="text-[10px] px-2 py-0.5 rounded-full bg-gray-800 text-gray-400 border border-gray-700 capitalize">
+                          {et.replace(/_/g, ' ')}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Performance row */}
+                  {(rating > 0 || totalBookings > 0 || city) && (
+                    <div className="flex items-center gap-3 text-[11px] text-gray-500">
+                      {rating > 0 && (
+                        <span className="flex items-center gap-1">
+                          <Star className="h-3 w-3 text-amber-400 fill-amber-400" />
+                          <span className="text-amber-400 font-semibold">{rating.toFixed(1)}</span>
+                        </span>
+                      )}
+                      {totalBookings > 0 && (
+                        <span className="flex items-center gap-1">
+                          <Check className="h-3 w-3 text-emerald-400" />
+                          {totalBookings} bookings
+                        </span>
+                      )}
+                      {city && (
+                        <span className="flex items-center gap-1">
+                          <MapPin className="h-3 w-3" />
+                          {city}
+                        </span>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Tags */}
+                  {tags.length > 0 && (
+                    <div className="flex flex-wrap gap-1">
+                      {tags.slice(0, 3).map((t) => (
+                        <span key={t} className="text-[10px] px-1.5 py-0.5 rounded bg-gray-800 text-gray-500 border border-gray-700/60">{t}</span>
+                      ))}
+                      {tags.length > 3 && <span className="text-[10px] text-gray-600">+{tags.length - 3}</span>}
+                    </div>
+                  )}
+
+                  {/* Description */}
+                  {svc.description && (
+                    <p className="text-[11px] text-gray-500 line-clamp-2 leading-relaxed">{svc.description}</p>
+                  )}
+
+                  {/* Rejection reason */}
+                  {rejectionReason && (
+                    <div className="rounded-xl bg-red-500/8 border border-red-500/20 px-3 py-2.5">
+                      <p className="text-[10px] text-red-400 font-bold uppercase tracking-wide mb-0.5">Rejected</p>
+                      <p className="text-xs text-red-300/80 leading-relaxed">{rejectionReason}</p>
+                    </div>
+                  )}
+
+                  {/* Action buttons */}
+                  <div className="mt-auto pt-3 border-t border-gray-800 flex flex-wrap gap-2">
+                    {status === 'draft' && (
+                      <button
+                        type="button"
+                        onClick={() => handleSubmitForReview(svc.id)}
+                        className="flex-1 flex items-center justify-center gap-1.5 rounded-xl bg-amber-500/15 border border-amber-500/30 py-2 text-[11px] font-bold text-amber-400 hover:bg-amber-500/25 active:scale-95 transition-all"
+                      >
+                        <Check className="h-3.5 w-3.5" />
+                        Submit for Review
+                      </button>
+                    )}
+                    {(status === 'active' || status === 'inactive') && (
+                      <button
+                        type="button"
+                        onClick={() => onToggleStatus(svc.id)}
+                        className={`flex items-center gap-1.5 rounded-xl border px-3 py-2 text-[11px] font-bold transition-all active:scale-95 ${
+                          status === 'active'
+                            ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20'
+                            : 'border-gray-700 bg-gray-800 text-gray-400 hover:text-white'
+                        }`}
+                      >
+                        {status === 'active' ? <ToggleRight className="h-3.5 w-3.5" /> : <ToggleLeft className="h-3.5 w-3.5" />}
+                        {status === 'active' ? 'Active' : 'Inactive'}
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => handleEdit(svc)}
+                      className="flex items-center gap-1.5 rounded-xl border border-blue-500/30 bg-blue-500/10 px-3 py-2 text-[11px] font-bold text-blue-400 hover:bg-blue-500/20 active:scale-95 transition-all"
+                    >
+                      <Sparkles className="h-3.5 w-3.5" />
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onRemove(svc.id)}
+                      className="flex items-center justify-center rounded-xl border border-red-500/20 bg-red-500/8 px-2.5 py-2 text-[11px] text-red-500 hover:bg-red-500/15 active:scale-95 transition-all"
+                      title="Delete service"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
 
-      {services.length === 0 && !showForm ? (
-        <EmptyState title="No services yet" body="Add your first service to appear in AI-generated event plans and search results." />
-      ) : (
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          {services.map((svc) => (
-            <div
-              key={svc.id}
-              className={`rounded-xl border p-5 transition-all ${
-                svc.status === 'active' ? 'border-gray-700 bg-gray-900' : 'border-gray-800 bg-gray-900/50 opacity-60'
-              }`}
-            >
-              <div className="flex items-start justify-between gap-2 mb-2">
-                <div className="min-w-0">
-                  {svc.categoryName && <p className="text-[10px] font-bold uppercase tracking-widest text-red-500 mb-1">{svc.categoryName}</p>}
-                  <h3 className="text-sm font-bold text-white leading-tight">{svc.title}</h3>
-                </div>
-                <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ${svc.status === 'active' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-gray-700 text-gray-500'}`}>
-                  {svc.status}
-                </span>
-              </div>
-
-              {(svc.minPrice || svc.maxPrice) && (
-                <p className="text-sm font-bold text-red-400">
-                  {svc.minPrice && svc.maxPrice ? `${fmtPrice(svc.minPrice)} – ${fmtPrice(svc.maxPrice)}` :
-                   svc.minPrice ? `from ${fmtPrice(svc.minPrice)}` : fmtPrice(svc.maxPrice!)}
-                  {svc.priceUnit && <span className="ml-1 text-xs font-normal text-gray-500">{svc.priceUnit}</span>}
-                </p>
-              )}
-              {svc.duration && <p className="mt-0.5 text-xs text-gray-600">{svc.duration}</p>}
-              {svc.description && <p className="mt-2 text-xs text-gray-500 line-clamp-2 leading-relaxed">{svc.description}</p>}
-
-              {svc.highlights.length > 0 && (
-                <div className="mt-3 flex flex-wrap gap-1.5">
-                  {svc.highlights.slice(0, 3).map((h) => (
-                    <span key={h} className="inline-flex items-center gap-1 rounded-full border border-gray-700 bg-gray-800 px-2 py-0.5 text-[10px] text-gray-400">
-                      <Check className="h-2.5 w-2.5 text-emerald-500" />{h}
-                    </span>
-                  ))}
-                  {svc.highlights.length > 3 && (
-                    <span className="rounded-full border border-gray-700 bg-gray-800 px-2 py-0.5 text-[10px] text-gray-600">+{svc.highlights.length - 3}</span>
-                  )}
-                </div>
-              )}
-
-              <div className="mt-4 flex gap-2">
-                <button type="button" onClick={() => onToggleStatus(svc.id)}
-                  className="flex-1 flex items-center justify-center gap-1.5 rounded-lg border border-gray-700 py-2 text-[11px] font-semibold text-gray-400 hover:border-gray-500 hover:text-white transition-all">
-                  {svc.status === 'active' ? <><ToggleRight className="h-3.5 w-3.5 text-emerald-400" /> Active</> : <><ToggleLeft className="h-3.5 w-3.5" /> Inactive</>}
-                </button>
-                <button type="button" onClick={() => onRemove(svc.id)}
-                  className="flex items-center justify-center gap-1 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-[11px] text-red-400 hover:bg-red-500/20 transition-all">
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
+      {showForm && (
+        <ServiceCreateForm
+          categories={normCategories}
+          cities={cities}
+          onCreated={editService ? handleUpdated : handleCreated}
+          onClose={() => { setShowForm(false); setEditService(undefined); }}
+          editData={editService}
+        />
       )}
     </div>
   );
@@ -837,466 +1031,402 @@ function ServicesSection({
 
 // ─── Packages ─────────────────────────────────────────────────────────────────
 
-// TAG config
-const TAG_CONFIG = {
-  budget:   { label: 'Budget',   color: 'text-blue-400   border-blue-500/30   bg-blue-500/10'   },
-  standard: { label: 'Standard', color: 'text-gray-300   border-gray-600      bg-gray-800'      },
-  premium:  { label: 'Premium',  color: 'text-purple-400 border-purple-500/30 bg-purple-500/10' },
-  luxury:   { label: 'Luxury',   color: 'text-amber-400  border-amber-500/30  bg-amber-500/10'  },
-} as const;
+const PKG_TAG_CONFIG: Record<string, { label: string; cls: string; icon: string }> = {
+  budget:   { label: 'Budget',   cls: 'text-sky-400    border-sky-500/30    bg-sky-500/10',    icon: '💡' },
+  standard: { label: 'Standard', cls: 'text-gray-300   border-gray-600      bg-gray-800',      icon: '⭐' },
+  premium:  { label: 'Premium',  cls: 'text-purple-400 border-purple-500/30 bg-purple-500/10', icon: '💎' },
+  luxury:   { label: 'Luxury',   cls: 'text-amber-400  border-amber-500/30  bg-amber-500/10',  icon: '👑' },
+};
 
 function PackagesSection({
-  packages, services, cities: initialCities, serviceCategories, onSave,
+  packages, services, cities: initialCities, serviceCategories, onSave, onUpdate,
   onToggleStatus, onToggleBoost, onToggleFeatured, onViewLeads,
 }: {
   packages: PackageItem[];
   services: VendorServiceItem[];
   cities: Array<{ id: number; name: string }>;
   serviceCategories: Array<{ id: number; name: string }>;
-  onSave: (data: {
-    title: string; categoryId?: number; price: number; priceType: 'fixed' | 'per_person';
-    description?: string; serviceIds?: number[]; tag?: string; minGuests?: number; maxGuests?: number;
-    cityId?: number; localityIds?: number[];
-  }) => Promise<void>;
+  onSave: (data: unknown) => Promise<void>;
+  onUpdate: (data: unknown) => void;
   onToggleStatus: (id: number) => void;
   onToggleBoost: (id: number) => void;
   onToggleFeatured: (id: number) => void;
   onViewLeads: (id: number) => void;
 }) {
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({
-    name: '', categoryId: '', price: '', description: '',
-    minGuests: '', maxGuests: '',
-  });
-  const [errors, setErrors] = useState<Record<string, string>>({});
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const [priceType, setPriceType] = useState<'fixed' | 'per_person'>('fixed');
-  const [selectedServiceIds, setSelectedServiceIds] = useState<number[]>([]);
+  const [editPkg, setEditPkg] = useState<PackageEditData | undefined>(undefined);
   const [cities, setCities] = useState(initialCities);
-  const [cityId, setCityId] = useState(initialCities[0]?.id ?? 0);
-  const [localities, setLocalities] = useState<Array<{ id: number; name: string }>>([]);
-  const [localityId, setLocalityId] = useState(0);
-  const [addedLocalities, setAddedLocalities] = useState<Array<{ id: number; label: string }>>([]);
-  const [loadingLocalities, setLoadingLocalities] = useState(false);
 
-  // Computed savings from selected services
-  const activeServices = services.filter((s) => s.status === 'active');
-  const selectedServices = activeServices.filter((s) => selectedServiceIds.includes(s.id));
-  const totalIndividualPrice = selectedServices.reduce((sum, s) => sum + Number(s.minPrice ?? 0), 0);
-  const bundlePrice = Number(form.price) || 0;
-  const savings = totalIndividualPrice > 0 && bundlePrice > 0 && bundlePrice < totalIndividualPrice
-    ? Math.round(((totalIndividualPrice - bundlePrice) / totalIndividualPrice) * 100)
-    : 0;
+  const activeServices = services.filter((s) => (s as any).status === 'active' || s.status === 'active');
 
   useEffect(() => {
     if (cities.length === 0) {
       locationsApi.getCities()
-        .then((d: unknown) => { const list = d as Array<{ id: number; name: string }>; setCities(list); setCityId(list[0]?.id ?? 0); })
+        .then((d: unknown) => setCities(d as Array<{ id: number; name: string }>))
         .catch(() => {});
     }
   }, [cities.length]);
 
-  useEffect(() => {
-    if (!cityId) return;
-    setLoadingLocalities(true);
-    setLocalities([]);
-    setLocalityId(0);
-    locationsApi.getLocalities(cityId)
-      .then((d: unknown) => { const list = d as Array<{ id: number; name: string }>; setLocalities(list); setLocalityId(list[0]?.id ?? 0); })
-      .catch(() => {})
-      .finally(() => setLoadingLocalities(false));
-  }, [cityId]);
-
-  const toggleService = (id: number) => {
-    setSelectedServiceIds((cur) =>
-      cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id],
-    );
+  const handleEditPackage = (pkg: PackageItem) => {
+    setEditPkg({
+      id:               pkg.id,
+      title:            pkg.title,
+      categoryId:       (pkg as any).categoryId,
+      eventTypes:       (pkg as any).eventTypes,
+      description:      pkg.description,
+      serviceIds:       pkg.serviceIds ?? [],
+      priceMode:        (pkg as any).priceMode ?? 'fixed_price',
+      price:            pkg.price,
+      finalPrice:       (pkg as any).finalPrice,
+      discountAmount:   (pkg as any).discountAmount,
+      addons:           (pkg as any).addons ?? (pkg as any).addOns,
+      includes:         (pkg as any).includes,
+      bulletPoints:     (pkg as any).bulletPoints,
+      exclusions:       (pkg as any).exclusions,
+      tags:             (pkg as any).tags,
+      cityId:           (pkg as any).cityId,
+      serviceAreas:     (pkg as any).serviceAreas,
+      minGuests:        (pkg as any).minGuests,
+      maxGuests:        (pkg as any).maxGuests,
+      availabilityType: (pkg as any).availabilityType ?? 'derived_from_services',
+      availableDates:   (pkg as any).availableDates,
+      blockedDates:     (pkg as any).blockedDates,
+      images:           (pkg as any).images ?? (pkg as any).resolvedImages,
+      videos:           (pkg as any).videos,
+    });
+    setShowForm(true);
   };
 
-  const addLoc = () => {
-    if (!cityId) return;
-    const cityName = cities.find((c) => c.id === cityId)?.name ?? '';
-    const locality = localities.find((l) => l.id === localityId);
-    const label = locality ? `${locality.name}, ${cityName}` : cityName;
-    const alreadyAdded = addedLocalities.some((l) => l.id === localityId && localityId !== 0);
-    if (!alreadyAdded) setAddedLocalities((prev) => [...prev, { id: localityId, label }]);
+  const handleCreatePackage = () => {
+    setEditPkg(undefined);
+    setShowForm(true);
   };
 
-  const resetForm = () => {
-    setForm({ name: '', categoryId: '', price: '', description: '', minGuests: '', maxGuests: '' });
-    setSelectedServiceIds([]);
-    setAddedLocalities([]);
-    setErrors({});
-    setPriceType('fixed');
-  };
+  const handleCreated = (pkg: unknown) => { onSave(pkg as any).catch(() => {}); setShowForm(false); setEditPkg(undefined); };
+  const handleUpdated = (pkg: unknown) => { onUpdate(pkg); setShowForm(false); setEditPkg(undefined); };
 
-  const handleSave = async () => {
-    const errs: Record<string, string> = {};
-    if (!form.name.trim()) errs.name = 'Package name is required';
-    if (!form.price.trim() || isNaN(Number(form.price)) || Number(form.price) <= 0) errs.price = 'Enter a valid price';
-    if (selectedServiceIds.length < 1) errs.services = 'Select at least 1 service to bundle';
-    setErrors(errs);
-    if (Object.keys(errs).length > 0) return;
-
-    const localityIds = addedLocalities.filter((l) => l.id > 0).map((l) => l.id);
-
-    setSaving(true);
-    try {
-      await onSave({
-        title: form.name.trim(),
-        categoryId: form.categoryId ? Number(form.categoryId) : undefined,
-        price: Number(form.price),
-        priceType,
-        description: form.description.trim() || undefined,
-        serviceIds: selectedServiceIds,
-        minGuests: form.minGuests ? Number(form.minGuests) : undefined,
-        maxGuests: form.maxGuests ? Number(form.maxGuests) : undefined,
-        cityId: cityId || undefined,
-        localityIds: localityIds.length > 0 ? localityIds : undefined,
-      });
-      setSaved(true);
-      resetForm();
-      setTimeout(() => { setSaved(false); setShowForm(false); }, 2500);
-    } catch {
-      setErrors((e) => ({ ...e, _: 'Failed to save. Please try again.' }));
-    } finally {
-      setSaving(false);
-    }
-  };
+  const activeCount = packages.filter((p) => (p as any).status === 'active').length;
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <SectionHeader eyebrow="Packages" title="Service Bundles" />
+    <div className="space-y-5">
+      {/* Header row */}
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-red-500 mb-0.5">Packages</p>
+          <h2 className="text-xl font-bold text-white">Service Bundles</h2>
+          <p className="text-xs text-gray-500 mt-0.5">
+            {packages.length === 0 ? 'No packages yet' : `${activeCount} active · ${packages.length} total`}
+          </p>
+        </div>
         <button
           type="button"
-          onClick={() => { setShowForm((v) => !v); resetForm(); }}
-          className="flex items-center gap-1.5 rounded-xl bg-red-600 px-4 py-2 text-xs font-bold text-white hover:bg-red-500 transition-all"
+          onClick={handleCreatePackage}
+          className="shrink-0 flex items-center gap-2 rounded-xl bg-red-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-red-500 active:scale-95 transition-all shadow-lg shadow-red-600/20"
         >
-          <Plus className="h-3.5 w-3.5" />
-          {showForm ? 'Cancel' : 'New Bundle'}
+          <Plus className="h-4 w-4" />
+          New Bundle
         </button>
       </div>
 
-      {/* Insight chips */}
+      {/* Insight strip */}
       <div className="grid gap-3 sm:grid-cols-3">
         {[
-          { icon: <Zap className="h-4 w-4 text-red-400" />,     text: 'Bundles get 3× more leads than standalone services', bg: 'border-red-500/30 bg-red-500/10' },
-          { icon: <TrendingUp className="h-4 w-4 text-amber-400" />, text: 'Bundle discount boosts ranking in AI search', bg: 'border-amber-500/30 bg-amber-500/10' },
-          { icon: <Star className="h-4 w-4 text-purple-400" />,  text: 'Premium & luxury bundles convert 2× better', bg: 'border-purple-500/30 bg-purple-500/10' },
+          { icon: <Zap className="h-3.5 w-3.5 text-red-400" />,       text: 'Bundles get 3× more leads',             cls: 'border-red-500/20 bg-red-500/8' },
+          { icon: <TrendingUp className="h-3.5 w-3.5 text-amber-400" />, text: 'Discounts boost AI search rank',       cls: 'border-amber-500/20 bg-amber-500/8' },
+          { icon: <Trophy className="h-3.5 w-3.5 text-purple-400" />,  text: 'Premium bundles convert 2× better',    cls: 'border-purple-500/20 bg-purple-500/8' },
         ].map((c, i) => (
-          <div key={i} className={`flex items-center gap-3 rounded-xl border px-4 py-3 ${c.bg}`}>
+          <div key={i} className={`flex items-center gap-2.5 rounded-xl border px-3 py-2.5 ${c.cls}`}>
             {c.icon}
-            <p className="text-xs font-semibold text-gray-300">{c.text}</p>
+            <p className="text-[11px] font-semibold text-gray-400">{c.text}</p>
           </div>
         ))}
       </div>
 
-      {/* Create bundle form */}
-      {showForm && (
-        <div className="rounded-xl border border-red-600/30 bg-gray-900 p-5">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-red-500 mb-1">New Bundle</p>
-          <p className="text-lg font-bold text-white mb-4">Select services + set bundle price</p>
-
-          {/* Step 1 — pick services */}
-          <div className="mb-5">
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">
-                Step 1 — Select Services to Bundle *
-              </p>
-              {selectedServiceIds.length > 0 && (
-                <span className="text-[10px] font-bold text-emerald-400">
-                  {selectedServiceIds.length} selected · Individual total: {fmtPrice(totalIndividualPrice)}
-                </span>
-              )}
-            </div>
-            {errors.services && <p className="text-[11px] text-red-400 mb-2">{errors.services}</p>}
-            {activeServices.length === 0 ? (
-              <div className="rounded-lg border border-dashed border-gray-700 px-4 py-5 text-center">
-                <p className="text-xs text-gray-500">No active services found.</p>
-                <p className="text-[11px] text-gray-600 mt-1">Go to Services tab to add your offerings first.</p>
-              </div>
-            ) : (
-              <div className="grid gap-2 sm:grid-cols-2">
-                {activeServices.map((svc) => {
-                  const checked = selectedServiceIds.includes(svc.id);
-                  return (
-                    <button
-                      key={svc.id}
-                      type="button"
-                      onClick={() => toggleService(svc.id)}
-                      className={`flex items-start gap-3 rounded-xl border p-3 text-left transition-all ${
-                        checked
-                          ? 'border-red-600/50 bg-red-600/10'
-                          : 'border-gray-700 bg-gray-800 hover:border-gray-600'
-                      }`}
-                    >
-                      <div className={`mt-0.5 h-4 w-4 rounded-full border-2 flex items-center justify-center shrink-0 ${
-                        checked ? 'border-red-500 bg-red-500' : 'border-gray-600'
-                      }`}>
-                        {checked && <Check className="h-2.5 w-2.5 text-white" />}
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-xs font-semibold text-white leading-tight">{svc.title}</p>
-                        {svc.categoryName && <p className="text-[10px] text-red-400 mt-0.5">{svc.categoryName}</p>}
-                        {(svc.minPrice || svc.maxPrice) && (
-                          <p className="text-[10px] text-gray-400 mt-0.5">
-                            {svc.minPrice ? fmtPrice(svc.minPrice) : ''}
-                            {svc.minPrice && svc.maxPrice ? ' – ' : ''}
-                            {svc.maxPrice ? fmtPrice(svc.maxPrice) : ''}
-                            {svc.priceUnit ? ` / ${svc.priceUnit}` : ''}
-                          </p>
-                        )}
-                        {svc.duration && <p className="text-[10px] text-gray-500">{svc.duration}</p>}
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
+      {/* No-service gate notice */}
+      {activeServices.length === 0 && (
+        <div className="rounded-2xl border border-amber-500/25 bg-amber-500/5 px-5 py-4 flex items-start gap-3">
+          <div className="w-8 h-8 rounded-xl bg-amber-500/15 flex items-center justify-center shrink-0 mt-0.5">
+            <BriefcaseBusiness className="h-4 w-4 text-amber-400" />
           </div>
-
-          {/* Step 2 — bundle details */}
-          <div className="space-y-3">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Step 2 — Bundle Details</p>
-            <DarkField
-              label="Bundle Name *"
-              placeholder="e.g. Complete Wedding Photography Package"
-              value={form.name}
-              onChange={(v) => { setForm((f) => ({ ...f, name: v })); setErrors((e) => ({ ...e, name: '' })); }}
-              error={errors.name}
-            />
-            <DarkSelect
-              label="Category"
-              value={form.categoryId}
-              onChange={(v) => setForm((f) => ({ ...f, categoryId: v }))}
-              options={serviceCategories.map((c) => ({ value: String(c.id), label: c.name }))}
-              placeholder="Select category (optional)"
-            />
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <DarkField
-                  label="Bundle Price (₹) *"
-                  placeholder="150000"
-                  value={form.price}
-                  onChange={(v) => { setForm((f) => ({ ...f, price: v })); setErrors((e) => ({ ...e, price: '' })); }}
-                  error={errors.price}
-                />
-                {savings > 0 && (
-                  <p className="text-[10px] text-emerald-400 mt-1 font-semibold">
-                    ✓ {savings}% savings vs individual ({fmtPrice(totalIndividualPrice)})
-                  </p>
-                )}
-              </div>
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-2">Price Type</p>
-                <div className="flex gap-2">
-                  {(['fixed', 'per_person'] as const).map((t) => (
-                    <button key={t} type="button" onClick={() => setPriceType(t)}
-                      className={`flex-1 rounded-lg border py-2.5 text-xs font-semibold transition-all ${
-                        priceType === t ? 'border-red-600 bg-red-600 text-white' : 'border-gray-700 bg-gray-800 text-gray-400'
-                      }`}>
-                      {t === 'fixed' ? 'Fixed' : 'Per Person'}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <DarkField label="Min Guests" placeholder="50" value={form.minGuests} onChange={(v) => setForm((f) => ({ ...f, minGuests: v }))} />
-              <DarkField label="Max Guests" placeholder="500" value={form.maxGuests} onChange={(v) => setForm((f) => ({ ...f, maxGuests: v }))} />
-            </div>
-            <DarkField
-              label="Description"
-              placeholder="Why this bundle is the best value…"
-              value={form.description}
-              onChange={(v) => setForm((f) => ({ ...f, description: v }))}
-              multiline
-            />
-
-            {/* Location */}
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-2">Service Location</p>
-              <div className="grid grid-cols-2 gap-2 mb-2">
-                <div>
-                  <p className="text-[9px] font-semibold text-gray-600 mb-1">City</p>
-                  <select value={cityId} onChange={(e) => setCityId(Number(e.target.value))}
-                    className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-xs text-gray-300 outline-none focus:border-red-600/50">
-                    {cities.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <p className="text-[9px] font-semibold text-gray-600 mb-1">Locality</p>
-                  {loadingLocalities ? (
-                    <div className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-xs text-gray-600">Loading…</div>
-                  ) : localities.length > 0 ? (
-                    <select value={localityId} onChange={(e) => setLocalityId(Number(e.target.value))}
-                      className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-xs text-gray-300 outline-none focus:border-red-600/50">
-                      {localities.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
-                    </select>
-                  ) : (
-                    <div className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-xs text-gray-600">No localities</div>
-                  )}
-                </div>
-              </div>
-              <button type="button" onClick={addLoc}
-                className="flex items-center gap-1.5 rounded-lg border border-red-600/40 bg-red-600/10 px-3 py-1.5 text-xs font-semibold text-red-400 hover:bg-red-600/20 transition-all">
-                <Plus className="h-3.5 w-3.5" /> Add Location
-              </button>
-              {addedLocalities.length > 0 && (
-                <div className="mt-2 flex flex-wrap gap-1.5">
-                  {addedLocalities.map((l) => (
-                    <span key={l.id} className="inline-flex items-center gap-1 rounded-full border border-gray-700 bg-gray-800 px-2.5 py-1 text-xs text-gray-400">
-                      <MapPin className="h-3 w-3" />{l.label}
-                      <button type="button" onClick={() => setAddedLocalities((ls) => ls.filter((x) => x.id !== l.id))}>
-                        <X className="h-3 w-3 ml-0.5 hover:text-red-400" />
-                      </button>
-                    </span>
-                  ))}
-                </div>
-              )}
-            </div>
+          <div>
+            <p className="text-sm font-bold text-amber-400">Create an active service first</p>
+            <p className="text-xs text-gray-500 mt-0.5">Packages bundle your services. Add and get at least one service approved before creating a package.</p>
           </div>
-
-          {errors._ && (
-            <p className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-400">{errors._}</p>
-          )}
-          {saved && (
-            <p className="mt-3 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-400 flex items-center gap-2">
-              <Check className="h-3.5 w-3.5" /> Bundle saved! Customers can now discover it.
-            </p>
-          )}
-          <button type="button" onClick={handleSave} disabled={saving}
-            className="mt-4 w-full flex items-center justify-center gap-2 rounded-xl bg-red-600 py-3 text-sm font-bold text-white hover:bg-red-500 disabled:opacity-60 transition-all">
-            {saving
-              ? <><span className="h-4 w-4 rounded-full border-2 border-white/30 border-t-white animate-spin" /> Saving…</>
-              : <><Package className="h-4 w-4" /> Publish Bundle</>
-            }
-          </button>
         </div>
       )}
 
-      {/* Bundle list */}
       {packages.length === 0 ? (
-        <EmptyState
-          title="No bundles yet"
-          body="Bundle 2+ services together with a discount. Customers prefer bundles — they convert 3× better than individual listings."
-        />
+        <div className="rounded-2xl border border-dashed border-gray-700 bg-gray-900/40 py-16 flex flex-col items-center gap-4 text-center">
+          <div className="w-14 h-14 rounded-2xl bg-gray-800 border border-gray-700 flex items-center justify-center">
+            <Package2 className="h-6 w-6 text-gray-500" />
+          </div>
+          <div>
+            <p className="text-sm font-bold text-white">No packages yet</p>
+            <p className="text-xs text-gray-500 mt-1 max-w-xs">Bundle your services to generate 3× more leads with great pricing packages.</p>
+          </div>
+          <button
+            type="button"
+            onClick={handleCreatePackage}
+            className="flex items-center gap-2 rounded-xl bg-red-600 px-5 py-2.5 text-sm font-bold text-white hover:bg-red-500 transition-all"
+          >
+            <Plus className="h-4 w-4" />
+            Create First Package
+          </button>
+        </div>
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
           {packages.map((pkg) => {
-            const tagCfg = pkg.tag ? TAG_CONFIG[pkg.tag] : null;
-            const bundledServices = services.filter((s) => (pkg.serviceIds ?? []).includes(s.id));
+            const status = (pkg as any).status ?? 'draft';
+            const rejectionReason: string = (pkg as any).rejectionReason ?? '';
+            const images: string[] = (pkg as any).resolvedImages ?? (pkg as any).images ?? [];
+            const finalPrice = Number((pkg as any).finalPrice ?? pkg.price ?? 0);
+            const originalPrice = Number(pkg.originalPrice ?? 0);
+            const savingsPct = Number(pkg.savingsPercent ?? 0);
+            const tagKey = (pkg.tag ?? '') as string;
+            const tagInfo = PKG_TAG_CONFIG[tagKey];
+            const serviceCount = pkg.serviceIds?.length ?? 0;
+            const eventTypes: string[] = (pkg as any).eventTypes ?? [];
+            const includes: string[] = (pkg as any).includes ?? [];
+            const city = (pkg as any).city?.name ?? (pkg as any).cityName ?? '';
+            const minGuests = (pkg as any).minGuests;
+            const maxGuests = (pkg as any).maxGuests;
+
             return (
-              <div key={pkg.id} className={`rounded-xl border p-5 ${
-                pkg.boosted ? 'border-amber-500/40 bg-amber-500/5' :
-                pkg.status === 'active' ? 'border-gray-700 bg-gray-900' :
-                'border-gray-800 bg-gray-900/50 opacity-60'
-              }`}>
-                {/* Header */}
-                <div className="flex items-start justify-between gap-2 mb-2">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-1.5 mb-1">
-                      {pkg.category && <p className="text-[10px] font-bold uppercase tracking-widest text-red-500">{pkg.category}</p>}
-                      {tagCfg && (
-                        <span className={`rounded-full border px-2 py-0.5 text-[9px] font-bold ${tagCfg.color}`}>
-                          {tagCfg.label}
+              <div
+                key={pkg.id}
+                className={`group rounded-2xl border overflow-hidden flex flex-col transition-all hover:shadow-xl hover:-translate-y-0.5 ${
+                  status === 'active'   ? 'border-gray-700/80 bg-gray-900 hover:border-gray-600 hover:shadow-black/40' :
+                  status === 'pending'  ? 'border-amber-500/25 bg-gray-900 hover:border-amber-500/40' :
+                  status === 'rejected' ? 'border-red-500/25 bg-gray-900 hover:border-red-500/40' :
+                  'border-gray-800 bg-gray-900/60'
+                }`}
+              >
+                {/* Cover image */}
+                <div className="relative h-44 overflow-hidden bg-gradient-to-br from-gray-800 to-gray-850 shrink-0">
+                  {images.length > 0 ? (
+                    <img src={images[0]} alt={pkg.title} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center">
+                      <Package2 className="h-10 w-10 text-gray-700" />
+                    </div>
+                  )}
+                  {images.length > 1 && (
+                    <span className="absolute bottom-2 right-2 bg-black/60 backdrop-blur-sm text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
+                      +{images.length - 1} photos
+                    </span>
+                  )}
+                  {/* Featured / Boosted badges — top-left */}
+                  <div className="absolute top-3 left-3 flex gap-1.5">
+                    {pkg.featured && (
+                      <span className="flex items-center gap-1 bg-red-600/90 backdrop-blur-sm text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
+                        <Star className="h-2.5 w-2.5 fill-white" /> Featured
+                      </span>
+                    )}
+                    {pkg.boosted && (
+                      <span className="flex items-center gap-1 bg-amber-600/90 backdrop-blur-sm text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
+                        <Zap className="h-2.5 w-2.5 fill-white" /> Boosted
+                      </span>
+                    )}
+                  </div>
+                  {/* Status badge — top-right */}
+                  <div className="absolute top-3 right-3">
+                    <StatusBadge status={status} />
+                  </div>
+                  {/* Price overlay — bottom */}
+                  <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent px-3 pb-2 pt-8">
+                    <div className="flex items-end justify-between gap-2">
+                      <div>
+                        <p className="text-xl font-bold text-white leading-tight">{fmtPrice(finalPrice)}</p>
+                        {originalPrice > 0 && finalPrice < originalPrice && (
+                          <p className="text-[11px] text-gray-400 line-through">{fmtPrice(originalPrice)}</p>
+                        )}
+                      </div>
+                      {savingsPct > 0 && (
+                        <span className="text-[10px] font-bold text-green-400 bg-green-500/20 border border-green-500/30 px-2 py-0.5 rounded-full whitespace-nowrap">
+                          {savingsPct}% off
                         </span>
                       )}
-                      {pkg.boosted && <span className="inline-flex items-center gap-1 rounded-full bg-amber-500 px-2 py-0.5 text-[9px] font-bold text-gray-900"><Zap className="h-2.5 w-2.5" />BOOSTED</span>}
-                      {pkg.featured && <span className="inline-flex items-center gap-1 rounded-full bg-red-600 px-2 py-0.5 text-[9px] font-bold text-white"><Star className="h-2.5 w-2.5" />FEATURED</span>}
                     </div>
-                    <h3 className="text-sm font-bold text-white leading-tight">{pkg.title}</h3>
-                    {(pkg.minGuests || pkg.maxGuests) && (
-                      <p className="text-[10px] text-gray-500 mt-0.5">
-                        {pkg.minGuests && `${pkg.minGuests}`}{pkg.minGuests && pkg.maxGuests ? '–' : ''}{pkg.maxGuests && `${pkg.maxGuests}`} guests
-                      </p>
-                    )}
-                  </div>
-                  <div className="shrink-0 text-right">
-                    <span className="block rounded-full bg-red-600 px-2.5 py-1 text-xs font-bold text-white whitespace-nowrap">
-                      {fmtPrice(pkg.price)}{pkg.priceType === 'per_person' ? '/pp' : ''}
-                    </span>
-                    {Number(pkg.savingsPercent) > 0 && (
-                      <span className="text-[10px] font-bold text-emerald-400 mt-1 block">
-                        {Math.round(Number(pkg.savingsPercent))}% savings
-                      </span>
-                    )}
                   </div>
                 </div>
 
-                {/* Stats row */}
-                <div className="grid grid-cols-3 gap-2 my-3">
-                  <div className="rounded-lg bg-gray-800 px-2 py-2 text-center">
-                    <p className="text-sm font-bold text-white">{pkg.leadsGenerated}</p>
-                    <p className="text-[9px] text-gray-500">Leads</p>
+                {/* Card body */}
+                <div className="p-4 flex-1 flex flex-col gap-3">
+                  {/* Title row */}
+                  <div>
+                    <h3 className="text-sm font-bold text-white leading-snug line-clamp-1">{pkg.title}</h3>
+                    <div className="mt-1.5 flex flex-wrap gap-1.5">
+                      {tagInfo && (
+                        <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border ${tagInfo.cls}`}>
+                          {tagInfo.icon} {tagInfo.label}
+                        </span>
+                      )}
+                      {eventTypes.slice(0, 2).map((et) => (
+                        <span key={et} className="text-[10px] px-2 py-0.5 rounded-full bg-gray-800 text-gray-400 border border-gray-700 capitalize">
+                          {et.replace(/_/g, ' ')}
+                        </span>
+                      ))}
+                    </div>
                   </div>
-                  <div className="rounded-lg bg-gray-800 px-2 py-2 text-center">
-                    <p className="text-sm font-bold text-white">{bundledServices.length || pkg.serviceIds?.length || 0}</p>
-                    <p className="text-[9px] text-gray-500">Services</p>
-                  </div>
-                  <div className={`rounded-lg px-2 py-2 text-center ${pkg.status === 'active' ? 'bg-emerald-500/10' : 'bg-gray-800'}`}>
-                    <p className={`text-[10px] font-bold capitalize ${pkg.status === 'active' ? 'text-emerald-400' : 'text-gray-500'}`}>{pkg.status}</p>
-                    <p className="text-[9px] text-gray-500">Status</p>
-                  </div>
-                </div>
 
-                {/* Bundled service chips */}
-                {bundledServices.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5 mb-3">
-                    {bundledServices.map((s) => (
-                      <span key={s.id} className="inline-flex items-center gap-1 rounded-full border border-gray-700 bg-gray-800 px-2 py-0.5 text-[10px] text-gray-400">
-                        <Check className="h-2.5 w-2.5 text-emerald-400" />{s.title}
+                  {/* Meta row */}
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-gray-500">
+                    {serviceCount > 0 && (
+                      <span className="flex items-center gap-1">
+                        <Package className="h-3 w-3 text-gray-600" />
+                        {serviceCount} service{serviceCount !== 1 ? 's' : ''} bundled
                       </span>
-                    ))}
+                    )}
+                    {city && (
+                      <span className="flex items-center gap-1">
+                        <MapPin className="h-3 w-3 text-gray-600" />
+                        {city}
+                      </span>
+                    )}
+                    {(minGuests || maxGuests) && (
+                      <span className="flex items-center gap-1">
+                        <Phone className="h-3 w-3 text-gray-600" />
+                        {minGuests && maxGuests ? `${minGuests}–${maxGuests} guests` : minGuests ? `${minGuests}+ guests` : `Up to ${maxGuests} guests`}
+                      </span>
+                    )}
+                    {pkg.leadsGenerated > 0 && (
+                      <span className="flex items-center gap-1">
+                        <MessageSquare className="h-3 w-3 text-gray-600" />
+                        {pkg.leadsGenerated} leads
+                      </span>
+                    )}
                   </div>
-                )}
 
-                {pkg.description && (
-                  <p className="text-xs text-gray-500 line-clamp-2 leading-relaxed mb-3">{pkg.description}</p>
-                )}
+                  {/* Includes preview */}
+                  {includes.length > 0 && (
+                    <div className="flex flex-wrap gap-1">
+                      {includes.slice(0, 3).map((inc) => (
+                        <span key={inc} className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/8 border border-emerald-500/15 text-emerald-500/80">
+                          <Check className="h-2.5 w-2.5 shrink-0" />
+                          <span className="truncate max-w-[100px]">{inc}</span>
+                        </span>
+                      ))}
+                      {includes.length > 3 && <span className="text-[10px] text-gray-600">+{includes.length - 3}</span>}
+                    </div>
+                  )}
 
-                {/* Actions */}
-                <div className="flex flex-wrap gap-2">
-                  <button type="button" onClick={() => onToggleStatus(pkg.id)}
-                    className="flex items-center gap-1.5 rounded-lg border border-gray-700 px-3 py-1.5 text-[11px] font-semibold text-gray-400 hover:border-gray-500 hover:text-white transition-all">
-                    {pkg.status === 'active'
-                      ? <><ToggleRight className="h-3.5 w-3.5 text-emerald-400" />Pause</>
-                      : <><ToggleLeft className="h-3.5 w-3.5" />Activate</>}
-                  </button>
-                  <button type="button" onClick={() => onToggleFeatured(pkg.id)}
-                    className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11px] font-bold transition-all ${
-                      pkg.featured
-                        ? 'border border-red-500/40 bg-red-500/10 text-red-400'
-                        : 'border border-gray-700 bg-gray-800 text-gray-400 hover:text-white'
-                    }`}>
-                    <Star className="h-3.5 w-3.5" />
-                    {pkg.featured ? 'Featured ✓' : 'Mark Featured'}
-                  </button>
-                  <button type="button" onClick={() => onToggleBoost(pkg.id)}
-                    className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11px] font-bold transition-all ${
-                      pkg.boosted
-                        ? 'border border-amber-500/40 bg-amber-500/10 text-amber-400'
-                        : 'border border-gray-700 bg-gray-800 text-gray-400 hover:text-white'
-                    }`}>
-                    <Zap className="h-3.5 w-3.5" />
-                    {pkg.boosted ? 'Boosted ✓' : 'Boost (10)'}
-                  </button>
-                  <button type="button" onClick={() => onViewLeads(pkg.id)}
-                    className="flex items-center gap-1.5 rounded-lg border border-gray-700 px-3 py-1.5 text-[11px] font-semibold text-gray-400 hover:border-gray-500 hover:text-white transition-all">
-                    <MessageSquare className="h-3.5 w-3.5" />{pkg.leadsGenerated} leads
-                  </button>
+                  {/* Description */}
+                  {pkg.description && (
+                    <p className="text-[11px] text-gray-500 line-clamp-2 leading-relaxed">{pkg.description}</p>
+                  )}
+
+                  {/* Rejection reason */}
+                  {rejectionReason && (
+                    <div className="rounded-xl bg-red-500/8 border border-red-500/20 px-3 py-2.5">
+                      <p className="text-[10px] text-red-400 font-bold uppercase tracking-wide mb-0.5">Rejected</p>
+                      <p className="text-xs text-red-300/80 leading-relaxed">{rejectionReason}</p>
+                    </div>
+                  )}
+
+                  {/* Actions */}
+                  <div className="mt-auto pt-3 border-t border-gray-800 space-y-2">
+                    {/* Primary action row */}
+                    <div className="flex gap-2">
+                      {status === 'draft' && (
+                        <button
+                          type="button"
+                          onClick={async () => { try { await packagesApi.submit(pkg.id); } catch { /* noop */ } }}
+                          className="flex-1 flex items-center justify-center gap-1.5 rounded-xl bg-amber-500/15 border border-amber-500/30 py-2 text-[11px] font-bold text-amber-400 hover:bg-amber-500/25 active:scale-95 transition-all"
+                        >
+                          <Check className="h-3.5 w-3.5" />
+                          Submit for Review
+                        </button>
+                      )}
+                      {(status === 'active' || status === 'inactive') && (
+                        <button
+                          type="button"
+                          onClick={() => onToggleStatus(pkg.id)}
+                          className={`flex items-center gap-1.5 rounded-xl border px-3 py-2 text-[11px] font-bold transition-all active:scale-95 ${
+                            status === 'active'
+                              ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20'
+                              : 'border-gray-700 bg-gray-800 text-gray-400 hover:text-white'
+                          }`}
+                        >
+                          {status === 'active' ? <ToggleRight className="h-3.5 w-3.5" /> : <ToggleLeft className="h-3.5 w-3.5" />}
+                          {status === 'active' ? 'Active' : 'Inactive'}
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => handleEditPackage(pkg)}
+                        className="flex items-center gap-1.5 rounded-xl border border-blue-500/30 bg-blue-500/10 px-3 py-2 text-[11px] font-bold text-blue-400 hover:bg-blue-500/20 active:scale-95 transition-all"
+                      >
+                        <Sparkles className="h-3.5 w-3.5" />
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onViewLeads(pkg.id)}
+                        className="flex items-center gap-1.5 rounded-xl border border-gray-700 bg-gray-800 px-3 py-2 text-[11px] font-semibold text-gray-400 hover:text-white hover:border-gray-600 active:scale-95 transition-all"
+                      >
+                        <MessageSquare className="h-3.5 w-3.5" />
+                        Leads
+                      </button>
+                    </div>
+                    {/* Secondary action row */}
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => onToggleFeatured(pkg.id)}
+                        className={`flex-1 flex items-center justify-center gap-1.5 rounded-xl border px-3 py-1.5 text-[11px] font-bold transition-all active:scale-95 ${
+                          pkg.featured
+                            ? 'border-red-500/40 bg-red-500/10 text-red-400 hover:bg-red-500/20'
+                            : 'border-gray-700 bg-gray-800 text-gray-500 hover:text-white hover:border-gray-600'
+                        }`}
+                      >
+                        <Star className={`h-3 w-3 ${pkg.featured ? 'fill-red-400' : ''}`} />
+                        {pkg.featured ? 'Featured ✓' : 'Feature'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onToggleBoost(pkg.id)}
+                        className={`flex-1 flex items-center justify-center gap-1.5 rounded-xl border px-3 py-1.5 text-[11px] font-bold transition-all active:scale-95 ${
+                          pkg.boosted
+                            ? 'border-amber-500/40 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20'
+                            : 'border-gray-700 bg-gray-800 text-gray-500 hover:text-white hover:border-gray-600'
+                        }`}
+                      >
+                        <Zap className={`h-3 w-3 ${pkg.boosted ? 'fill-amber-400' : ''}`} />
+                        {pkg.boosted ? 'Boosted ✓' : 'Boost (10)'}
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
             );
           })}
         </div>
       )}
+
+      {showForm && (
+        <PackageCreateForm
+          categories={serviceCategories}
+          cities={cities}
+          activeServices={activeServices.map((s) => ({
+            id: s.id,
+            name: (s as any).name ?? s.title,
+            title: s.title,
+            basePrice: (s as any).basePrice ?? s.minPrice,
+            minPrice: s.minPrice,
+            priceType: (s as any).priceType ?? s.priceUnit,
+            eventTypes: (s as any).eventTypes,
+            tags: (s as any).tags,
+            categoryId: s.categoryId,
+          }))}
+          onCreated={editPkg ? handleUpdated : handleCreated}
+          onClose={() => { setShowForm(false); setEditPkg(undefined); }}
+          onNeedService={() => { setShowForm(false); setEditPkg(undefined); }}
+          editData={editPkg}
+        />
+      )}
     </div>
   );
 }
-
 // ─── Wallet ───────────────────────────────────────────────────────────────────
 
 function WalletSection({ balance, walletHistory }: { balance: number; walletHistory: WalletEntry[] }) {

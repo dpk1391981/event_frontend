@@ -216,7 +216,7 @@ export default function VendorDashboardShell({ initialSection = 'dashboard' }: P
             <>
               {active === 'dashboard'     && <OverviewSection data={dashData} onNavigate={navigate} />}
               {active === 'leads'         && <LeadsSection vendorId={dashData?.vendorId} />}
-              {active === 'packages'      && <PackagesSection vendorId={dashData?.vendorId} />}
+              {active === 'packages'      && <PackagesSection vendorId={dashData?.vendorId} onNavigate={navigate} />}
               {active === 'services'      && <ServicesSection vendorId={dashData?.vendorId} />}
               {active === 'subscription'  && <SubscriptionSection vendorId={dashData?.vendorId} isPaid={dashData?.subscription?.isPaid} onUpgraded={loadDashboard} />}
               {active === 'wallet'        && <WalletSection vendorId={dashData?.vendorId} />}

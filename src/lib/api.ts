@@ -189,12 +189,38 @@ export const formBuilderApi = {
   adminSeed:    () => api.post('/form-builder/admin/seed'),
 };
 
-// ─── Upload (client-side base64 helper) ──────────────────────────────────────
+// ─── Upload (server-side real file upload) ────────────────────────────────────
 export const uploadApi = {
   /**
-   * Converts a File to a compressed base64 data URL (max 800px, quality 0.75).
-   * No backend required — stored directly in event.images[].
+   * Upload a single image file to the backend.
+   * @param file   - browser File object
+   * @param folder - storage subfolder: 'services' | 'packages' | 'vendors' | 'general'
+   * @returns      - relative path like "/uploads/services/abc123.jpg"
    */
+  uploadImage: async (file: File, folder: 'services' | 'packages' | 'vendors' | 'general' = 'general'): Promise<string> => {
+    const fd = new FormData();
+    fd.append('file', file);
+    const res = await api.post<{ url: string }>(`/upload/image?folder=${folder}`, fd, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return res.data.url;
+  },
+
+  /**
+   * Upload multiple image files in one request (max 10).
+   * @returns array of relative paths
+   */
+  uploadImages: async (files: File[], folder: 'services' | 'packages' | 'vendors' | 'general' = 'general'): Promise<string[]> => {
+    const fd = new FormData();
+    files.forEach((f) => fd.append('files', f));
+    const res = await api.post<{ urls: string[] }>(`/upload/images?folder=${folder}`, fd, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 30000,
+    });
+    return res.data.urls;
+  },
+
+  /** @deprecated Use uploadImage instead */
   compressToBase64: (file: File, maxPx = 800, quality = 0.75): Promise<string> =>
     new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -226,6 +252,7 @@ export const packagesApi = {
     api.get('/packages/search', { params }),
   getMyPackages: () => api.get('/packages/my'),
   create:        (data: unknown) => api.post('/packages', data),
+  submit:        (id: number) => api.post(`/packages/${id}/submit`),
   update:        (id: number, data: unknown) => api.patch(`/packages/${id}`, data),
   remove:        (id: number) => api.delete(`/packages/${id}`),
   boost:         (id: number) => api.post(`/packages/${id}/boost`),
@@ -237,23 +264,43 @@ export const packagesApi = {
 
 // ─── Vendor Services (JWT required) ──────────────────────────────────────────
 export const vendorServicesApi = {
-  getAll: () => api.get('/vendor/services'),
-  getOne: (id: number) => api.get(`/vendor/services/${id}`),
-  create: (data: {
-    title: string;
-    description?: string;
-    categoryId?: number;
-    priceUnit?: string;
-    minPrice?: number;
-    maxPrice?: number;
-    duration?: string;
-    highlights?: string[];
-  }) => api.post('/vendor/services', data),
-  update: (id: number, data: Record<string, unknown>) =>
-    api.patch(`/vendor/services/${id}`, data),
-  remove: (id: number) => api.delete(`/vendor/services/${id}`),
-  reorder: (orderedIds: number[]) =>
-    api.patch('/vendor/services/reorder', { orderedIds }),
+  // Vendor operations
+  getAll:         ()             => api.get('/vendor/services'),
+  getActive:      ()             => api.get('/vendor/services/active'),
+  countActive:    ()             => api.get('/vendor/services/count'),
+  getOne:         (id: number)   => api.get(`/vendor/services/${id}`),
+  create:         (data: Record<string, unknown>) => api.post('/vendor/services', data),
+  update:         (id: number, data: Record<string, unknown>) => api.patch(`/vendor/services/${id}`, data),
+  remove:         (id: number)   => api.delete(`/vendor/services/${id}`),
+  reorder:        (orderedIds: number[]) => api.patch('/vendor/services/reorder', { orderedIds }),
+  submit:         (id: number)   => api.post(`/vendor/services/${id}/submit`),
+  // Public search
+  search:         (params: Record<string, unknown>) => api.get('/vendor/services/search', { params }),
+  suggestTags:    (categoryId?: number, eventTypes?: string) =>
+    api.get('/vendor/services/tags/suggest', { params: { categoryId, eventTypes } }),
+  // Admin
+  adminList:      (params: Record<string, unknown>) => api.get('/admin/services', { params }),
+  adminStats:     ()             => api.get('/admin/services/stats'),
+  adminModerate:  (id: number, data: { action: string; rejectionReason?: string; adminNote?: string }) =>
+    api.patch(`/admin/services/${id}/moderate`, data),
+  adminUpdate:    (id: number, data: Record<string, unknown>) => api.patch(`/admin/services/${id}`, data),
+  adminDelete:    (id: number)   => api.delete(`/admin/services/${id}`),
+  adminModerateImage: (id: number, index: number, action: 'approved' | 'rejected') =>
+    api.patch(`/admin/services/${id}/images/${index}`, { action }),
+};
+
+// ─── Packages Admin ───────────────────────────────────────────────────────────
+export const packagesAdminApi = {
+  list:           (params: Record<string, unknown>) => api.get('/admin/packages', { params }),
+  stats:          ()             => api.get('/admin/packages/stats'),
+  moderate:       (id: number, data: { action: string; rejectionReason?: string; adminNote?: string }) =>
+    api.patch(`/admin/packages/${id}/moderate`, data),
+  update:         (id: number, data: Record<string, unknown>) => api.patch(`/admin/packages/${id}`, data),
+  delete:         (id: number)   => api.delete(`/admin/packages/${id}`),
+  moderateImage:  (id: number, index: number, action: 'approved' | 'rejected') =>
+    api.patch(`/admin/packages/${id}/images/${index}`, { action }),
+  overrideRanking:(id: number, data: { boostScore?: number; isFeatured?: boolean }) =>
+    api.patch(`/admin/packages/${id}/ranking`, data),
 };
 
 // ─── Vendor Panel (JWT required) ──────────────────────────────────────────────
